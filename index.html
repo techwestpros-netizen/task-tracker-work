@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Task Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="color-scheme" content="light dark">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">✓</div>
+      <div>
+        <div class="brand-title">Task Tracker</div>
+        <div class="brand-sub">Firebase (Allow-list) • Management + Regular users</div>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div id="userPill" class="pill hidden"></div>
+      <button id="btnSignOut" class="btn hidden">Sign out</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- AUTH -->
+    <section id="authCard" class="card auth">
+      <h1>Sign in</h1>
+      <p class="muted">
+        Your email must be on the allow-list to use this app.
+      </p>
+
+      <div class="grid2">
+        <div class="field">
+          <label>Email</label>
+          <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input id="authPassword" type="password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnSignIn" class="btn primary">Sign in</button>
+        <button id="btnSignUp" class="btn">Create account</button>
+        <span class="spacer"></span>
+        <button id="btnSendLink" class="btn subtle" title="Optional: passwordless email link sign-in">Sign in by email link</button>
+      </div>
+
+      <div class="hint">
+        <details>
+          <summary>First-time setup note</summary>
+          <div class="muted">
+            If you are setting up from scratch, add your own email to the allow-list as <b>management</b> in Firestore
+            (collection <code>allowedUsers</code>) before signing up.
+            See <code>README.md</code>.
+          </div>
+        </details>
+      </div>
+
+      <div id="authMsg" class="msg hidden"></div>
+    </section>
+
+    <!-- APP -->
+    <section id="appShell" class="hidden">
+      <section class="card toolbar">
+        <div class="tabs">
+          <button class="tab active" data-tab="open">Open</button>
+          <button class="tab" data-tab="history">History</button>
+          <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
+        </div>
+
+        <div class="search">
+          <input id="searchInput" type="search" placeholder="Search tasks..." />
+        </div>
+      </section>
+
+      <!-- OPEN -->
+      <section id="panel-open" class="card panel">
+        <div class="panel-head">
+          <h2>Open tasks</h2>
+          <div class="panel-actions">
+            <button id="btnNewTask" class="btn primary hidden">+ Add task</button>
+          </div>
+        </div>
+
+        <div id="openList" class="list"></div>
+        <div id="openEmpty" class="empty hidden">No open tasks.</div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="panel-history" class="card panel hidden">
+        <div class="panel-head">
+          <h2>History</h2>
+          <div class="panel-actions">
+            <button id="btnRefreshHistory" class="btn">Refresh</button>
+          </div>
+        </div>
+
+        <div id="historyList" class="list"></div>
+        <div id="historyEmpty" class="empty hidden">No completed tasks yet.</div>
+      </section>
+
+      <!-- ADMIN -->
+      <section id="panel-admin" class="card panel hidden">
+        <div class="panel-head">
+          <h2>Management</h2>
+          <div class="panel-actions">
+            <span class="pill">Allow-list</span>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="card inner">
+            <h3>Allow an email</h3>
+            <p class="muted">Add an email to the allow-list and choose their role.</p>
+
+            <div class="field">
+              <label>Email</label>
+              <input id="allowEmail" type="email" placeholder="person@example.com" />
+            </div>
+
+            <div class="field">
+              <label>Role</label>
+              <select id="allowRole">
+                <option value="user">Regular user</option>
+                <option value="management">Management</option>
+              </select>
+            </div>
+
+            <div class="row">
+              <button id="btnAllowAdd" class="btn primary">Add / Update</button>
+              <button id="btnAllowRemove" class="btn danger">Remove</button>
+            </div>
+
+            <div id="adminMsg" class="msg hidden"></div>
+          </div>
+
+          <div class="card inner">
+            <h3>Allowed users</h3>
+            <div id="allowedList" class="list compact"></div>
+            <div id="allowedEmpty" class="empty hidden">No allowed users found.</div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- MODAL: NEW TASK -->
+    <div id="modalBackdrop" class="backdrop hidden"></div>
+    <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <h3 id="modalTitle">New task</h3>
+        <button id="btnModalClose" class="iconbtn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Title</label>
+          <input id="taskTitle" type="text" placeholder="Task title" maxlength="120" />
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea id="taskDesc" rows="4" placeholder="Details (optional)"></textarea>
+        </div>
+        <div class="row">
+          <button id="btnCreateTask" class="btn primary">Create</button>
+          <button id="btnCancelTask" class="btn">Cancel</button>
+        </div>
+        <div id="taskMsg" class="msg hidden"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span class="muted">Tip: Management can add tasks and manage the allow-list. Regular users can complete tasks and comment.</span>
+  </footer>
+
+  <!-- Firebase app logic -->
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
