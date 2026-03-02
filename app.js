@@ -137,6 +137,8 @@ let currentRole = null; // 'management' | 'user'
 let unsubOpen = null;
 let unsubHistory = null;
 
+let openCache = [];
+let histCache = [];
 function setRole(role){
   currentRole = role;
   show(btnNewTask, role === "management");
@@ -341,37 +343,51 @@ function renderTaskItem(docSnap, isHistory){
   return wrap;
 }
 
+
+function renderOpenFromCache(){
+  const q = (searchInput.value || "").trim().toLowerCase();
+  openList.innerHTML = "";
+  let count = 0;
+  openCache.forEach(({ docSnap, data }) => {
+    const t = data;
+    if(t.status !== "open") return;
+    if(!taskMatchesSearch(t, q)) return;
+    openList.appendChild(renderTaskItem(docSnap, false));
+    count++;
+  });
+  show(openEmpty, count === 0);
+}
+
+function renderHistoryFromCache(){
+  const q = (searchInput.value || "").trim().toLowerCase();
+  historyList.innerHTML = "";
+  let count = 0;
+  histCache.forEach(({ docSnap, data }) => {
+    const t = data;
+    if(t.status !== "done") return;
+    if(!taskMatchesSearch(t, q)) return;
+    historyList.appendChild(renderTaskItem(docSnap, true));
+    count++;
+  });
+  show(historyEmpty, count === 0);
+}
+
+
 function bindTaskListeners(){
   // open tasks
   const qOpen = query(collection(db, "tasks"), orderBy("createdAt","desc"), limit(200));
   unsubOpen = onSnapshot(qOpen, (snap) => {
-    const q = (searchInput.value || "").trim().toLowerCase();
-    openList.innerHTML = "";
-    let count = 0;
-    snap.forEach(d => {
-      const t = d.data();
-      if(t.status !== "open") return;
-      if(!taskMatchesSearch(t, q)) return;
-      openList.appendChild(renderTaskItem(d, false));
-      count++;
-    });
-    show(openEmpty, count === 0);
+    openCache = [];
+    snap.forEach(d => openCache.push({ docSnap: d, data: d.data() }));
+    renderOpenFromCache();
   });
 
   // history tasks
   const qHist = query(collection(db, "tasks"), orderBy("completedAt","desc"), limit(200));
   unsubHistory = onSnapshot(qHist, (snap) => {
-    const q = (searchInput.value || "").trim().toLowerCase();
-    historyList.innerHTML = "";
-    let count = 0;
-    snap.forEach(d => {
-      const t = d.data();
-      if(t.status !== "done") return;
-      if(!taskMatchesSearch(t, q)) return;
-      historyList.appendChild(renderTaskItem(d, true));
-      count++;
-    });
-    show(historyEmpty, count === 0);
+    histCache = [];
+    snap.forEach(d => histCache.push({ docSnap: d, data: d.data() }));
+    renderHistoryFromCache();
   });
 }
 
@@ -607,15 +623,13 @@ btnRefreshHistory.onclick = () => {
   setMsg(authMsg, "", "");
 };
 
-// Search
-searchInput.addEventListener("input", () => {
-  // snapshots will re-render on next snapshot; we force rebind by just calling listeners render via manual refresh:
-  // easiest: do nothing; filtering occurs during snapshot render, but input doesn't trigger snapshot.
-  // We'll re-render by temporarily toggling tab to itself.
-  const tab = getCurrentTab();
-  setTab(tab);
-});
 
+// Search (re-renders immediately using cached snapshots)
+searchInput.addEventListener("input", () => {
+  // Only render the visible panel, but it's fine to render both (small lists).
+  renderOpenFromCache();
+  renderHistoryFromCache();
+});
 // Admin events
 btnAllowAdd.onclick = upsertAllowed;
 btnAllowRemove.onclick = removeAllowed;
