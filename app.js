@@ -533,7 +533,7 @@ async function doSendLink(){
   try{
     const actionCodeSettings = {
       // IMPORTANT: replace with your hosting URL after you deploy
-      url: "https://techwestpros-netizen.github.io/task-tracker-work/",
+      url: window.location.href.split("#")[0],
       handleCodeInApp: true
     };
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
