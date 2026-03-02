@@ -626,6 +626,7 @@ btnRefreshHistory.onclick = () => {
 
 // Search (re-renders immediately using cached snapshots)
 searchInput.addEventListener("input", () => {
+  // Only render the visible panel, but it's fine to render both (small lists).
   renderOpenFromCache();
   renderHistoryFromCache();
 });
