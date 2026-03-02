@@ -276,7 +276,9 @@ textarea{resize:vertical; min-height:90px}
 /* Modal */
 .backdrop{
   position:fixed; inset:0;
-  background: rgba(0,0,0,.55);
+  /* Darker overlay + subtle blur to separate modal from the page without changing your theme colors */
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(2px);
   z-index:50;
 }
 .modal{
@@ -285,7 +287,23 @@ textarea{resize:vertical; min-height:90px}
   transform:translate(-50%,-50%);
   width:min(640px, 94vw);
   z-index:60;
+
+  /* Make the modal readable against the background (uses existing theme variables/colors) */
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
+  border-radius: 18px;
+  padding: 16px 16px 14px;
 }
+
+.modal-body{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.modal .field{ margin: 0; }
+.modal .row{ margin-top: 6px; }
+
 .modal-head{
   display:flex;
   align-items:center;
