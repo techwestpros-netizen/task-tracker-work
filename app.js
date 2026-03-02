@@ -137,8 +137,6 @@ let currentRole = null; // 'management' | 'user'
 let unsubOpen = null;
 let unsubHistory = null;
 
-let openCache = [];
-let histCache = [];
 function setRole(role){
   currentRole = role;
   show(btnNewTask, role === "management");
@@ -343,51 +341,37 @@ function renderTaskItem(docSnap, isHistory){
   return wrap;
 }
 
-
-function renderOpenFromCache(){
-  const q = (searchInput.value || "").trim().toLowerCase();
-  openList.innerHTML = "";
-  let count = 0;
-  openCache.forEach(({ docSnap, data }) => {
-    const t = data;
-    if(t.status !== "open") return;
-    if(!taskMatchesSearch(t, q)) return;
-    openList.appendChild(renderTaskItem(docSnap, false));
-    count++;
-  });
-  show(openEmpty, count === 0);
-}
-
-function renderHistoryFromCache(){
-  const q = (searchInput.value || "").trim().toLowerCase();
-  historyList.innerHTML = "";
-  let count = 0;
-  histCache.forEach(({ docSnap, data }) => {
-    const t = data;
-    if(t.status !== "done") return;
-    if(!taskMatchesSearch(t, q)) return;
-    historyList.appendChild(renderTaskItem(docSnap, true));
-    count++;
-  });
-  show(historyEmpty, count === 0);
-}
-
-
 function bindTaskListeners(){
   // open tasks
   const qOpen = query(collection(db, "tasks"), orderBy("createdAt","desc"), limit(200));
   unsubOpen = onSnapshot(qOpen, (snap) => {
-    openCache = [];
-    snap.forEach(d => openCache.push({ docSnap: d, data: d.data() }));
-    renderOpenFromCache();
+    const q = (searchInput.value || "").trim().toLowerCase();
+    openList.innerHTML = "";
+    let count = 0;
+    snap.forEach(d => {
+      const t = d.data();
+      if(t.status !== "open") return;
+      if(!taskMatchesSearch(t, q)) return;
+      openList.appendChild(renderTaskItem(d, false));
+      count++;
+    });
+    show(openEmpty, count === 0);
   });
 
   // history tasks
   const qHist = query(collection(db, "tasks"), orderBy("completedAt","desc"), limit(200));
   unsubHistory = onSnapshot(qHist, (snap) => {
-    histCache = [];
-    snap.forEach(d => histCache.push({ docSnap: d, data: d.data() }));
-    renderHistoryFromCache();
+    const q = (searchInput.value || "").trim().toLowerCase();
+    historyList.innerHTML = "";
+    let count = 0;
+    snap.forEach(d => {
+      const t = d.data();
+      if(t.status !== "done") return;
+      if(!taskMatchesSearch(t, q)) return;
+      historyList.appendChild(renderTaskItem(d, true));
+      count++;
+    });
+    show(historyEmpty, count === 0);
   });
 }
 
@@ -623,12 +607,15 @@ btnRefreshHistory.onclick = () => {
   setMsg(authMsg, "", "");
 };
 
-
-// Search (re-renders immediately using cached snapshots)
+// Search
 searchInput.addEventListener("input", () => {
-  renderOpenFromCache();
-  renderHistoryFromCache();
+  // snapshots will re-render on next snapshot; we force rebind by just calling listeners render via manual refresh:
+  // easiest: do nothing; filtering occurs during snapshot render, but input doesn't trigger snapshot.
+  // We'll re-render by temporarily toggling tab to itself.
+  const tab = getCurrentTab();
+  setTab(tab);
 });
+
 // Admin events
 btnAllowAdd.onclick = upsertAllowed;
 btnAllowRemove.onclick = removeAllowed;
