@@ -42,6 +42,37 @@ const fmtTime = (ts) => {
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)"); // Firestore doc IDs can include '.' but this avoids confusion
 
+const displayNameFromEmail = (email) => {
+  // "weston.williams@fedex.com" -> "Weston Williams"
+  const local = (email || "").split("@")[0] || "";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+};
+
+async function loadAssignableUsers(){
+  if(!taskAssignTo) return;
+  taskAssignTo.innerHTML = "";
+  // Blank option = unassigned
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "(Unassigned)";
+  taskAssignTo.appendChild(blank);
+
+  const snaps = await getDocs(query(collection(db, "allowedUsers"), orderBy("email","asc"), limit(250)));
+  snaps.forEach(s => {
+    const d = s.data() || {};
+    const email = normalizeEmail(d.email);
+    if(!email) return;
+    const opt = document.createElement("option");
+    opt.value = email;
+    opt.textContent = `${d.name || displayNameFromEmail(email)} (${email})`;
+    taskAssignTo.appendChild(opt);
+  });
+}
+
 function setMsg(el, text, kind){
   if(!text){
     el.textContent = "";
@@ -95,6 +126,7 @@ const btnCancelTask = $("btnCancelTask");
 const btnCreateTask = $("btnCreateTask");
 const taskTitle = $("taskTitle");
 const taskDesc = $("taskDesc");
+const taskAssignTo = $("taskAssignTo");
 const taskMsg = $("taskMsg");
 
 /** ---------------------------
@@ -191,9 +223,10 @@ function renderTaskItem(docSnap, isHistory){
   meta.className = "item-meta";
   const created = fmtTime(t.createdAt);
   const done = fmtTime(t.completedAt);
+  const assignedLabel = t.assignedTo ? ` • assigned to ${t.assignedToName || t.assignedTo}` : "";
   meta.textContent = isHistory
-    ? `Completed ${done || ""} • by ${t.completedBy || "?"} • created ${created || ""}`
-    : `Created ${created || ""} • by ${t.createdBy || "?"}`;
+    ? `Completed ${done || ""} • by ${t.completedBy || "?"} • created ${created || ""}${assignedLabel}`
+    : `Created ${created || ""} • by ${t.createdBy || "?"}${assignedLabel}`;
   left.appendChild(meta);
 
   top.appendChild(left);
@@ -428,9 +461,13 @@ async function removeAllowed(){
 /** ---------------------------
  * Modal
  * --------------------------*/
-function openModal(){
+async function openModal(){
   taskTitle.value = "";
   taskDesc.value = "";
+  if(taskAssignTo){
+    await loadAssignableUsers();
+    taskAssignTo.value = "";
+  }
   setMsg(taskMsg, "", "");
   show(backdrop, true);
   show(taskModal, true);
@@ -453,9 +490,12 @@ async function createTask(){
   }
   btnCreateTask.disabled = true;
   try{
+    const assignedTo = normalizeEmail(taskAssignTo?.value || "");
     await addDoc(collection(db, "tasks"), {
       title,
       description,
+      assignedTo: assignedTo || null,
+      assignedToName: assignedTo ? displayNameFromEmail(assignedTo) : null,
       status: "open",
       createdAt: serverTimestamp(),
       createdBy: currentUser.email,
@@ -533,7 +573,7 @@ async function doSendLink(){
   try{
     const actionCodeSettings = {
       // IMPORTANT: replace with your hosting URL after you deploy
-      url: window.location.href.split("#")[0],
+      url: "https://techwestpros-netizen.github.io/task-tracker-work/",
       handleCodeInApp: true
     };
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
