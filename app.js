@@ -383,10 +383,19 @@ function renderOpenFromCache() {
   if (!openList) return;
   openList.innerHTML = "";
 
-  const items = (openCache || []).filter(t => {
-    const status = (t.status || "").toLowerCase();
-    return status === "open";
-  }).filter(matchesSearch);
+  const items = (openCache || [])
+    .filter(t => {
+      const status = (t.status || "").toLowerCase();
+      return status === "open";
+    })
+    .filter(matchesSearch);
+
+  // Client-side sort (avoids Firestore composite index requirements)
+  items.sort((a, b) => {
+    const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const dbb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    return dbb - da;
+  });
 
   items.forEach(t => openList.appendChild(renderTaskCard(t, false)));
   show(openEmpty, items.length === 0);
@@ -439,11 +448,9 @@ function bindTaskListeners() {
   const doneQ = query(
     collection(db, "tasks"),
     where("status", "==", "done"),
-    orderBy("createdAt", "desc"),
     limit(200)
   );
-
-  unsubOpen = onSnapshot(openQ, (snap) => {
+unsubOpen = onSnapshot(openQ, (snap) => {
     openCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderOpenFromCache();
   }, (err) => {
