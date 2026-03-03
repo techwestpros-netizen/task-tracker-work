@@ -85,7 +85,7 @@ a{color:inherit}
 
 /* Layout */
 .container{
-  width:min(1600px, 98vw);
+  width:min(1500px, 96vw);
   margin: 18px auto 40px;
   display:flex;
   flex-direction:column;
@@ -412,15 +412,15 @@ textarea{resize:vertical; min-height:90px}
 .csa-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 0;              /* allow table to shrink to fit container */
-  table-layout: fixed;        /* compress columns so more fits on screen */
-  font-size: 13px;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 12px;
 }
 
 .csa-table th,
 .csa-table td {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 6px 8px;
+  padding: 4px 6px;
   vertical-align: middle;
   white-space: nowrap;
   overflow: hidden;
@@ -450,10 +450,10 @@ textarea{resize:vertical; min-height:90px}
 
 .csa-table input.input {
   width: 100%;
-  max-width: 110px;
+  max-width: 95px;
   min-width: 0;
-  height: 32px;
-  padding: 6px 8px;
+  height: 28px;
+  padding: 4px 6px;
 }
 
 /* pass/fail coloring */
@@ -469,5 +469,5 @@ textarea{resize:vertical; min-height:90px}
 
 
 @media (min-width: 1400px){
-  .container{ width:min(1800px, 98vw); }
+  .container{ width:min(1650px, 96vw); }
 }
