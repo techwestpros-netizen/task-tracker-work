@@ -102,7 +102,8 @@
 
         <div id="historyList" class="list"></div>
         <div id="historyEmpty" class="empty hidden">No completed tasks yet.</div>
-      
+      </section>
+
       <!-- CSA SUMMARY -->
       <section id="panel-csa" class="card panel hidden">
         <div class="panel-head">
@@ -120,12 +121,13 @@
 
           <div class="field">
             <label>Start date</label>
-            <input id="csaStart" type="date" />
+            <!-- IMPORTANT: these IDs must match app.js -->
+            <input id="csaStartDate" type="date" />
           </div>
 
           <div class="field">
             <label>End date</label>
-            <input id="csaEnd" type="date" />
+            <input id="csaEndDate" type="date" />
           </div>
 
           <div class="row">
@@ -137,9 +139,32 @@
 
         <div id="csaMsg" class="msg hidden"></div>
         <div id="csaTableWrap" class="table-wrap"></div>
-      </section>
 
-</section>
+        <!-- Companies manager (ONLY in CSA Summary now) -->
+        <div class="grid2" style="margin-top:14px;">
+          <div class="card inner">
+            <h3>Companies</h3>
+            <p class="muted">Add companies for CSA Summary. Only active companies show in the dropdown.</p>
+
+            <div class="field">
+              <label>Company name</label>
+              <input id="companyName" type="text" placeholder="Aspire" />
+            </div>
+
+            <div class="row">
+              <button id="btnCompanyAdd" class="btn primary">Add / Update</button>
+            </div>
+
+            <div id="companyMsg" class="msg hidden"></div>
+          </div>
+
+          <div class="card inner">
+            <h3>Company list</h3>
+            <div id="companyList" class="list compact"></div>
+            <div id="companyEmpty" class="empty hidden">No companies yet.</div>
+          </div>
+        </div>
+      </section>
 
       <!-- ADMIN -->
       <section id="panel-admin" class="card panel hidden">
@@ -183,31 +208,7 @@
           </div>
         </div>
       </section>
-    
-        <div class="grid2" style="margin-top:14px;">
-          <div class="card inner">
-            <h3>Companies</h3>
-            <p class="muted">Add companies for CSA Summary. Only active companies show in the dropdown.</p>
-
-            <div class="field">
-              <label>Company name</label>
-              <input id="companyName" type="text" placeholder="Aspire" />
-            </div>
-
-            <div class="row">
-              <button id="btnCompanyAdd" class="btn primary">Add / Update</button>
-            </div>
-
-            <div id="companyMsg" class="msg hidden"></div>
-          </div>
-
-          <div class="card inner">
-            <h3>Company list</h3>
-            <div id="companyList" class="list compact"></div>
-            <div id="companyEmpty" class="empty hidden">No companies yet.</div>
-          </div>
-        </div>
-</section>
+    </section>
 
     <!-- MODAL: NEW TASK -->
     <div id="modalBackdrop" class="backdrop hidden"></div>
