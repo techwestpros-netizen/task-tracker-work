@@ -20,6 +20,7 @@ import {
   addDoc,
   updateDoc,
   serverTimestamp,
+  arrayUnion,
   query,
   where,
   orderBy,
@@ -32,6 +33,90 @@ import {
 -------------------------------- */
 const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
+
+/* -------------------------------
+   Comment Modal (no prompt popups)
+-------------------------------- */
+let commentModalEl = null;
+let commentModalTaskId = null;
+
+function ensureCommentModal() {
+  if (commentModalEl) return;
+
+  // Minimal modal styles (keeps working even if CSS is strict)
+  const style = document.createElement("style");
+  style.textContent = `
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;}
+    .modal-overlay.hidden{display:none;}
+    .modal-card{width:min(560px,92vw);background:#111;border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.6);}
+    .modal-title{font-weight:800;margin-bottom:8px;}
+    #commentModalText{width:100%;resize:vertical;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:inherit;padding:10px;}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px;}
+    .btn.primary{border-color:rgba(255,255,255,.25);}
+  `;
+  document.head.appendChild(style);
+
+  commentModalEl = document.createElement("div");
+  commentModalEl.id = "commentModal";
+  commentModalEl.className = "modal-overlay hidden";
+  commentModalEl.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">Add comment</div>
+      <textarea id="commentModalText" rows="4" placeholder="Type your comment..."></textarea>
+      <div class="modal-actions">
+        <button id="commentModalCancel" class="btn">Cancel</button>
+        <button id="commentModalSave" class="btn primary">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(commentModalEl);
+
+  const cancel = document.getElementById("commentModalCancel");
+  const save = document.getElementById("commentModalSave");
+  cancel?.addEventListener("click", closeCommentModal);
+  commentModalEl.addEventListener("click", (e) => {
+    if (e.target === commentModalEl) closeCommentModal();
+  });
+
+  save?.addEventListener("click", async () => {
+    const ta = document.getElementById("commentModalText");
+    const text = (ta?.value || "").trim();
+    if (!text) return;
+
+    try {
+      if (!currentUser) throw new Error("Not signed in.");
+      if (!commentModalTaskId) throw new Error("Missing task id.");
+
+      await updateDoc(doc(db, "tasks", commentModalTaskId), {
+        comments: arrayUnion({
+          by: currentUser.email || "",
+          text,
+          at: new Date().toISOString()
+        })
+      });
+
+      closeCommentModal();
+    } catch (e2) {
+      alert("Failed to add comment: " + (e2?.message || e2));
+    }
+  });
+}
+
+function openCommentModal(taskId) {
+  ensureCommentModal();
+  commentModalTaskId = taskId;
+  const ta = document.getElementById("commentModalText");
+  if (ta) ta.value = "";
+  commentModalEl.classList.remove("hidden");
+  setTimeout(() => ta?.focus?.(), 0);
+}
+
+function closeCommentModal() {
+  if (!commentModalEl) return;
+  commentModalTaskId = null;
+  commentModalEl.classList.add("hidden");
+}
+
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)");
@@ -343,15 +428,8 @@ function renderTaskCard(t, isHistory) {
     const btnComment = document.createElement("button");
     btnComment.className = "btn";
     btnComment.textContent = "Add comment";
-    btnComment.onclick = async () => {
-      const text = prompt("Comment:");
-      if (!text) return;
-      try {
-        const next = [...(t.comments || []), { by: currentUser?.email || "", text, at: new Date().toISOString() }];
-        await updateDoc(doc(db, "tasks", t.id), { comments: next });
-      } catch (e) {
-        alert("Failed to add comment: " + (e?.message || e));
-      }
+    btnComment.onclick = () => {
+      openCommentModal(t.id);
     };
 
     actions.appendChild(btnDone);
@@ -383,19 +461,10 @@ function renderOpenFromCache() {
   if (!openList) return;
   openList.innerHTML = "";
 
-  const items = (openCache || [])
-    .filter(t => {
-      const status = (t.status || "").toLowerCase();
-      return status === "open";
-    })
-    .filter(matchesSearch);
-
-  // Client-side sort (avoids Firestore composite index requirements)
-  items.sort((a, b) => {
-    const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-    const dbb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-    return dbb - da;
-  });
+  const items = (openCache || []).filter(t => {
+    const status = (t.status || "").toLowerCase();
+    return status === "open";
+  }).filter(matchesSearch);
 
   items.forEach(t => openList.appendChild(renderTaskCard(t, false)));
   show(openEmpty, items.length === 0);
@@ -432,6 +501,7 @@ function bindTaskListeners() {
   const openQ = query(
     collection(db, "tasks"),
     where("status", "==", "open"),
+    orderBy("createdAt", "desc"),
     limit(200)
   );
 
@@ -441,11 +511,13 @@ function bindTaskListeners() {
   const completedQ = query(
     collection(db, "tasks"),
     where("status", "==", "completed"),
+    orderBy("createdAt", "desc"),
     limit(200)
   );
   const doneQ = query(
     collection(db, "tasks"),
     where("status", "==", "done"),
+    orderBy("createdAt", "desc"),
     limit(200)
   );
 
@@ -1009,12 +1081,52 @@ function renderCompaniesUI() {
       for (const c of companiesCache) {
         const row = document.createElement("div");
         row.className = "company-row";
-        row.textContent = c.name || c.id;
-        row.style.cursor = "pointer";
-        row.onclick = () => {
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.justifyContent = "space-between";
+        row.style.gap = "10px";
+
+        const left = document.createElement("div");
+        left.textContent = c.name || c.id;
+        left.style.cursor = "pointer";
+        left.style.flex = "1";
+        if (c.active === false) left.style.opacity = "0.6";
+        left.onclick = () => {
           if (csaCompanySelect) csaCompanySelect.value = c.id;
           selectedCompanyId = c.id;
         };
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+
+        const btnToggle = document.createElement("button");
+        btnToggle.className = "btn";
+        btnToggle.textContent = (c.active === false) ? "Restore" : "Delete";
+        btnToggle.onclick = async (e) => {
+          e.stopPropagation();
+          try {
+            if (currentRole !== "management") return;
+            const doingRestore = (c.active === false);
+            const ok = confirm(doingRestore
+              ? `Restore company "${c.name || c.id}"?`
+              : `Delete company "${c.name || c.id}"?\n\nThis hides it from the dropdown. (Reports/metrics stay in Firestore.)`);
+            if (!ok) return;
+
+            await setDoc(doc(db, "companies", c.id), {
+              active: doingRestore ? true : false,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            setMsg(csaMsg, doingRestore ? "Company restored." : "Company deleted (hidden).", "ok");
+          } catch (e2) {
+            setMsg(csaMsg, "Company update failed: " + (e2?.message || e2), "err");
+          }
+        };
+
+        actions.appendChild(btnToggle);
+        row.appendChild(left);
+        row.appendChild(actions);
         companyList.appendChild(row);
       }
     }
