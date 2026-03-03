@@ -329,3 +329,75 @@ textarea{resize:vertical; min-height:90px}
 @media (max-width:720px){
   .card.auth{margin:0}
 }
+
+
+/* CSA Summary table */
+.table-wrap{
+  overflow:auto;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:rgba(0,0,0,.12);
+}
+
+.csa-table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:900px;
+}
+
+.csa-table th, .csa-table td{
+  padding:10px 10px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  border-right:1px solid rgba(255,255,255,.06);
+  text-align:center;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+
+.csa-table th:first-child,
+.csa-table td:first-child{
+  text-align:left;
+  position:sticky;
+  left:0;
+  background:rgba(0,0,0,.25);
+}
+
+.csa-table thead th{
+  position:sticky;
+  top:0;
+  background:rgba(0,0,0,.35);
+  z-index:2;
+}
+
+.csa-table input{
+  width:90px;
+  max-width:100%;
+  padding:8px 8px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.18);
+  color:var(--text);
+  text-align:center;
+}
+
+.compact .item{
+  padding:10px 12px;
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  border:1px solid var(--border);
+  color:var(--muted);
+}
+
+.badge.ok{ color: var(--ok); border-color: rgba(40,198,122,.35); }
+.badge.off{ color: #f0b35a; border-color: rgba(240,179,90,.35); }
+
+.cell-ok{ background: rgba(40,198,122,.18); }
+.cell-warn{ background: rgba(240,179,90,.18); }
+.cell-bad{ background: rgba(255,76,94,.18); }
+.csa-row-goal td{ font-weight:600; }
+.csa-row-total td{ font-weight:700; }
