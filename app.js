@@ -27,9 +27,9 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-/** ---------------------------
- * Helpers
- * --------------------------*/
+/* -------------------------------
+   Helpers
+-------------------------------- */
 const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
 
@@ -57,7 +57,9 @@ const fmtTime = (ts) => {
     const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
     if (!d) return "";
     return d.toLocaleString();
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 };
 
 function yyyyMmDd(d) {
@@ -79,17 +81,16 @@ function eachDayInclusive(start, end) {
   }
   return days;
 }
-
 function toNumberOrNull(v) {
   if (v === "" || v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-/** Percent helpers:
- * store percent values as fraction (0.985).
- * Accept user input as 0.985 OR 98.5 OR "98.5%".
- */
+/* Percent helpers:
+   - Store percent values as fraction (0.985)
+   - Accept input as 0.985 OR 98.5 OR "98.5%"
+*/
 function percentToFraction(v) {
   if (v === null || v === undefined) return null;
   const n = Number(v);
@@ -104,9 +105,9 @@ function formatPercentFraction(f) {
   return `${(n * 100).toFixed(2)}%`;
 }
 
-/** ---------------------------
- * UI elements
- * --------------------------*/
+/* -------------------------------
+   Elements (must match index.html)
+-------------------------------- */
 const authCard = $("authCard");
 const appShell = $("appShell");
 
@@ -120,8 +121,8 @@ const btnSendLink = $("btnSendLink");
 const btnSignOut = $("btnSignOut");
 const userPill = $("userPill");
 
-const tabAdmin = $("tabAdmin");
 const searchInput = $("searchInput");
+const tabAdmin = $("tabAdmin");
 
 const openList = $("openList");
 const openEmpty = $("openEmpty");
@@ -129,16 +130,9 @@ const historyList = $("historyList");
 const historyEmpty = $("historyEmpty");
 
 const btnNewTask = $("btnNewTask");
-const btnRefreshHistory = $("btnRefreshHistory");
+const btnRefreshHistory = $("btnRefreshHistory"); // optional
 
-const allowEmail = $("allowEmail");
-const allowRole = $("allowRole");
-const btnAllowAdd = $("btnAllowAdd");
-const btnAllowRemove = $("btnAllowRemove");
-const adminMsg = $("adminMsg");
-const allowedList = $("allowedList");
-const allowedEmpty = $("allowedEmpty");
-
+// Modal
 const backdrop = $("modalBackdrop");
 const taskModal = $("taskModal");
 const btnModalClose = $("btnModalClose");
@@ -149,7 +143,16 @@ const taskDesc = $("taskDesc");
 const taskAssignTo = $("taskAssignTo");
 const taskMsg = $("taskMsg");
 
-/** CSA */
+// Admin allow-list
+const allowEmail = $("allowEmail");
+const allowRole = $("allowRole");
+const btnAllowAdd = $("btnAllowAdd");
+const btnAllowRemove = $("btnAllowRemove");
+const adminMsg = $("adminMsg");
+const allowedList = $("allowedList");
+const allowedEmpty = $("allowedEmpty");
+
+// CSA Summary
 const csaCompanySelect = $("csaCompanySelect");
 const csaStartDate = $("csaStartDate");
 const csaEndDate = $("csaEndDate");
@@ -163,29 +166,36 @@ const companyName = $("companyName");
 const btnCompanyAdd = $("btnCompanyAdd");
 const companyList = $("companyList");
 
-/** ---------------------------
- * State
- * --------------------------*/
+// Tabs
+const allTabs = Array.from(document.querySelectorAll(".tab"));
+
+/* -------------------------------
+   State
+-------------------------------- */
 let currentUser = null;
 let currentRole = null;
 
+// Tasks
 let unsubOpen = null;
 let unsubHistory = null;
 let openCache = [];
 let histCache = [];
 
+// Companies
 let unsubCompanies = null;
 let companiesCache = [];
 let selectedCompanyId = null;
 
+// CSA
 let currentCsaMetricSet = null;
 let currentCsaReportId = null;
 let currentCsaValuesByDate = {};
 let currentCsaDays = [];
+let csaTotalsTds = [];
 
-/** CSA DOM refs for totals (so we can update totals without re-rendering) */
-let csaTotalsTds = []; // index matches metric index
-
+/* -------------------------------
+   UI helpers
+-------------------------------- */
 function setMsg(el, text, kind) {
   if (!el) return;
   if (!text) {
@@ -198,16 +208,6 @@ function setMsg(el, text, kind) {
   show(el, true);
 }
 
-function setRole(role) {
-  currentRole = role;
-  show(btnNewTask, role === "management");
-  show(tabAdmin, role === "management");
-
-  show(btnCompanyAdd, role === "management");
-  show(btnCsaCreate, role === "management");
-  show(btnCsaSave, role === "management");
-}
-
 function setSignedInUI(yes) {
   show(authCard, !yes);
   show(appShell, yes);
@@ -215,76 +215,113 @@ function setSignedInUI(yes) {
   show(userPill, yes);
 }
 
-function setTab(tab) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
-  show($("panel-open"), tab === "open");
-  show($("panel-history"), tab === "history");
-  show($("panel-admin"), tab === "admin");
-  show($("panel-csa"), tab === "csa");
+function setRole(role) {
+  currentRole = role;
+  show(btnNewTask, role === "management");
+  show(tabAdmin, role === "management");
+
+  // CSA buttons only for management
+  show(btnCompanyAdd, role === "management");
+  show(btnCsaCreate, role === "management");
+  show(btnCsaSave, role === "management");
 }
 
-/** ---------------------------
- * Allow-list (your method)
- * --------------------------*/
+function setTab(tab) {
+  allTabs.forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  show($("panel-open"), tab === "open");
+  show($("panel-history"), tab === "history");
+  show($("panel-csa"), tab === "csa");
+  show($("panel-admin"), tab === "admin");
+}
+
+/* -------------------------------
+   Allow-list check
+-------------------------------- */
 async function requireAllowedUser(user) {
   const email = normalizeEmail(user?.email);
   if (!email) return { ok: false, reason: "Missing email on account." };
 
-  const id = emailDocId(email);
-  const snap = await getDoc(doc(db, "allowedUsers", id));
+  const snap = await getDoc(doc(db, "allowedUsers", emailDocId(email)));
   if (!snap.exists()) return { ok: false, reason: "This email is not allow-listed." };
 
   const d = snap.data() || {};
   const role = d.role;
   if (role !== "management" && role !== "user") return { ok: false, reason: "Allow-list entry missing role." };
+
   return { ok: true, role };
 }
 
-/** ---------------------------
- * Tabs
- * --------------------------*/
-document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
+/* -------------------------------
+   Tabs click
+-------------------------------- */
+allTabs.forEach(btn => {
+  btn.addEventListener("click", () => setTab(btn.dataset.tab));
+});
 
-/** ---------------------------
- * Tasks
- * --------------------------*/
+/* -------------------------------
+   Tasks
+-------------------------------- */
 function matchesSearch(task) {
   const q = (searchInput?.value || "").trim().toLowerCase();
   if (!q) return true;
-  const hay = [task.title, task.desc, task.createdBy, task.assignedTo].join(" ").toLowerCase();
+
+  const hay = [
+    task.title,
+    task.desc,
+    task.description,
+    task.createdBy,
+    task.assignedTo,
+    (task.comments || []).map(c => `${c.by} ${c.text}`).join(" ")
+  ].join(" ").toLowerCase();
+
   return hay.includes(q);
 }
 
-function renderOpenFromCache() {
-  if (!openList) return;
-  openList.innerHTML = "";
-  const items = openCache.filter(matchesSearch);
-  show(openEmpty, items.length === 0);
+function renderTaskCard(t, isHistory) {
+  const card = document.createElement("div");
+  card.className = "task";
 
-  for (const t of items) {
-    const card = document.createElement("div");
-    card.className = "task";
+  const top = document.createElement("div");
+  top.className = "task-top";
 
-    const top = document.createElement("div");
-    top.className = "task-top";
+  const title = document.createElement("div");
+  title.className = "task-title";
+  title.textContent = t.title || "(untitled)";
 
-    const title = document.createElement("div");
-    title.className = "task-title";
-    title.textContent = t.title || "(No title)";
+  const meta = document.createElement("div");
+  meta.className = "task-meta";
 
-    const meta = document.createElement("div");
-    meta.className = "task-meta";
-    meta.textContent =
-      `Created: ${fmtTime(t.createdAt)} • By: ${t.createdBy || ""}` +
-      (t.assignedTo ? ` • Assigned: ${t.assignedTo}` : "");
+  const created = fmtTime(t.createdAt);
+  const done = fmtTime(t.completedAt);
 
-    top.appendChild(title);
-    top.appendChild(meta);
+  if (isHistory) {
+    meta.textContent = `Completed: ${done || ""} • By: ${t.completedBy || ""}`;
+  } else {
+    meta.textContent = `Created: ${created || ""} • By: ${t.createdBy || ""}` + (t.assignedTo ? ` • Assigned: ${t.assignedTo}` : "");
+  }
 
+  const left = document.createElement("div");
+  left.appendChild(title);
+  left.appendChild(meta);
+
+  const badge = document.createElement("div");
+  badge.className = "badge";
+  const st = (t.status || "").toLowerCase();
+  badge.textContent = (st === "completed" || st === "done") ? "Done" : "Open";
+
+  top.appendChild(left);
+  top.appendChild(badge);
+
+  const descText = (t.desc || t.description || "").trim();
+  if (descText) {
     const desc = document.createElement("div");
     desc.className = "task-desc";
-    desc.textContent = t.desc || "";
+    desc.textContent = descText;
+    card.appendChild(desc);
+  }
 
+  // Actions for open tasks
+  if (!isHistory) {
     const actions = document.createElement("div");
     actions.className = "task-actions";
 
@@ -299,11 +336,26 @@ function renderOpenFromCache() {
           completedBy: currentUser?.email || ""
         });
       } catch (e) {
-        alert("Failed: " + (e?.message || e));
+        alert("Failed to mark completed: " + (e?.message || e));
+      }
+    };
+
+    const btnComment = document.createElement("button");
+    btnComment.className = "btn";
+    btnComment.textContent = "Add comment";
+    btnComment.onclick = async () => {
+      const text = prompt("Comment:");
+      if (!text) return;
+      try {
+        const next = [...(t.comments || []), { by: currentUser?.email || "", text, at: new Date().toISOString() }];
+        await updateDoc(doc(db, "tasks", t.id), { comments: next });
+      } catch (e) {
+        alert("Failed to add comment: " + (e?.message || e));
       }
     };
 
     actions.appendChild(btnDone);
+    actions.appendChild(btnComment);
 
     if (currentRole === "management") {
       const btnDel = document.createElement("button");
@@ -311,74 +363,124 @@ function renderOpenFromCache() {
       btnDel.textContent = "Delete";
       btnDel.onclick = async () => {
         if (!confirm("Delete this task?")) return;
-        try { await deleteDoc(doc(db, "tasks", t.id)); }
-        catch (e) { alert("Failed: " + (e?.message || e)); }
+        try {
+          await deleteDoc(doc(db, "tasks", t.id));
+        } catch (e) {
+          alert("Failed to delete: " + (e?.message || e));
+        }
       };
       actions.appendChild(btnDel);
     }
 
-    card.appendChild(top);
-    card.appendChild(desc);
     card.appendChild(actions);
-    openList.appendChild(card);
   }
+
+  card.prepend(top);
+  return card;
+}
+
+function renderOpenFromCache() {
+  if (!openList) return;
+  openList.innerHTML = "";
+
+  const items = (openCache || []).filter(t => {
+    const status = (t.status || "").toLowerCase();
+    return status === "open";
+  }).filter(matchesSearch);
+
+  items.forEach(t => openList.appendChild(renderTaskCard(t, false)));
+  show(openEmpty, items.length === 0);
 }
 
 function renderHistoryFromCache() {
   if (!historyList) return;
   historyList.innerHTML = "";
-  const items = histCache.filter(matchesSearch);
+
+  const items = (histCache || []).filter(t => {
+    const status = (t.status || "").toLowerCase();
+    return status === "completed" || status === "done";
+  }).filter(matchesSearch);
+
+  // sort newest completion first if possible
+  items.sort((a, b) => {
+    const da = a.completedAt?.toDate ? a.completedAt.toDate().getTime() : (a.completedAt ? new Date(a.completedAt).getTime() : 0);
+    const dbb = b.completedAt?.toDate ? b.completedAt.toDate().getTime() : (b.completedAt ? new Date(b.completedAt).getTime() : 0);
+    return dbb - da;
+  });
+
+  items.forEach(t => historyList.appendChild(renderTaskCard(t, true)));
   show(historyEmpty, items.length === 0);
-
-  for (const t of items) {
-    const card = document.createElement("div");
-    card.className = "task";
-
-    const top = document.createElement("div");
-    top.className = "task-top";
-
-    const title = document.createElement("div");
-    title.className = "task-title";
-    title.textContent = t.title || "(No title)";
-
-    const meta = document.createElement("div");
-    meta.className = "task-meta";
-    meta.textContent = `Completed: ${fmtTime(t.completedAt)} • By: ${t.completedBy || ""}`;
-
-    top.appendChild(title);
-    top.appendChild(meta);
-
-    const desc = document.createElement("div");
-    desc.className = "task-desc";
-    desc.textContent = t.desc || "";
-
-    card.appendChild(top);
-    card.appendChild(desc);
-    historyList.appendChild(card);
-  }
 }
 
 function bindTaskListeners() {
-  // safety: if already bound, unbind first
+  // Unbind previous
   if (unsubOpen) unsubOpen();
   if (unsubHistory) unsubHistory();
+  unsubOpen = null;
+  unsubHistory = null;
 
-  const openQ = query(collection(db, "tasks"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(200));
-  const histQ = query(collection(db, "tasks"), where("status", "==", "completed"), orderBy("completedAt", "desc"), limit(200));
+  // Listener for OPEN tasks
+  const openQ = query(
+    collection(db, "tasks"),
+    where("status", "==", "open"),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
+
+  // Listener for HISTORY tasks (supports "completed" and "done" safely)
+  // We can't do "in" + orderBy completedAt reliably for old docs without completedAt,
+  // so we read by status == completed and also status == done separately if needed.
+  const completedQ = query(
+    collection(db, "tasks"),
+    where("status", "==", "completed"),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
+  const doneQ = query(
+    collection(db, "tasks"),
+    where("status", "==", "done"),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
 
   unsubOpen = onSnapshot(openQ, (snap) => {
     openCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderOpenFromCache();
   }, (err) => {
     console.error("Open tasks listener error:", err);
+    if (openList) openList.innerHTML = `<div class="msg err">Tasks blocked: ${err.message}</div>`;
   });
 
-  unsubHistory = onSnapshot(histQ, (snap) => {
-    histCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Merge completed + done into histCache
+  let completedCache = [];
+  let doneCache = [];
+  const rerenderHistory = () => {
+    // merge by id
+    const map = new Map();
+    for (const t of completedCache) map.set(t.id, t);
+    for (const t of doneCache) map.set(t.id, t);
+    histCache = Array.from(map.values());
     renderHistoryFromCache();
+  };
+
+  const unsub1 = onSnapshot(completedQ, (snap) => {
+    completedCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rerenderHistory();
   }, (err) => {
-    console.error("History listener error:", err);
+    console.error("History(completed) listener error:", err);
+    if (historyList) historyList.innerHTML = `<div class="msg err">History blocked: ${err.message}</div>`;
   });
+
+  const unsub2 = onSnapshot(doneQ, (snap) => {
+    doneCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rerenderHistory();
+  }, (err) => {
+    console.error("History(done) listener error:", err);
+    if (historyList) historyList.innerHTML = `<div class="msg err">History blocked: ${err.message}</div>`;
+  });
+
+  // store combined unsub in unsubHistory
+  unsubHistory = () => { try { unsub1(); } catch {} try { unsub2(); } catch {} };
 }
 
 searchInput?.addEventListener("input", () => {
@@ -386,15 +488,22 @@ searchInput?.addEventListener("input", () => {
   renderHistoryFromCache();
 });
 
-/** ---------------------------
- * Modal
- * --------------------------*/
+btnRefreshHistory?.addEventListener("click", () => {
+  renderHistoryFromCache();
+});
+
+/* -------------------------------
+   Modal: create new task
+-------------------------------- */
 function openTaskModal() {
   show(backdrop, true);
   show(taskModal, true);
   setMsg(taskMsg, "", "");
+  if (taskTitle) taskTitle.value = "";
+  if (taskDesc) taskDesc.value = "";
   loadAssignableUsers().catch(() => {});
 }
+
 function closeTaskModal() {
   show(taskModal, false);
   show(backdrop, false);
@@ -408,6 +517,7 @@ backdrop?.addEventListener("click", closeTaskModal);
 async function loadAssignableUsers() {
   if (!taskAssignTo) return;
   taskAssignTo.innerHTML = "";
+
   const blank = document.createElement("option");
   blank.value = "";
   blank.textContent = "(Unassigned)";
@@ -428,9 +538,11 @@ async function loadAssignableUsers() {
 btnCreateTask?.addEventListener("click", async () => {
   try {
     if (currentRole !== "management") return;
+
     const title = (taskTitle?.value || "").trim();
     const desc = (taskDesc?.value || "").trim();
     const assignedTo = (taskAssignTo?.value || "").trim();
+
     if (!title) return setMsg(taskMsg, "Title required.", "err");
 
     await addDoc(collection(db, "tasks"), {
@@ -450,15 +562,18 @@ btnCreateTask?.addEventListener("click", async () => {
   }
 });
 
-/** ---------------------------
- * Admin allow-list
- * --------------------------*/
+/* -------------------------------
+   Admin: allow list
+-------------------------------- */
 async function refreshAllowedList() {
   if (!allowedList) return;
   allowedList.innerHTML = "";
+  setMsg(adminMsg, "", "");
+
   const snaps = await getDocs(query(collection(db, "allowedUsers"), orderBy("email", "asc"), limit(300)));
   const items = [];
   snaps.forEach(s => items.push({ id: s.id, ...s.data() }));
+
   show(allowedEmpty, items.length === 0);
 
   for (const u of items) {
@@ -473,6 +588,7 @@ async function upsertAllowed() {
   try {
     const email = normalizeEmail(allowEmail?.value);
     if (!email) return setMsg(adminMsg, "Enter an email.", "err");
+
     const role = allowRole?.value || "user";
     const id = emailDocId(email);
 
@@ -495,7 +611,9 @@ async function removeAllowed() {
     const email = normalizeEmail(allowEmail?.value);
     if (!email) return setMsg(adminMsg, "Enter an email.", "err");
     const id = emailDocId(email);
+
     await deleteDoc(doc(db, "allowedUsers", id));
+
     setMsg(adminMsg, "Removed allow-list user.", "ok");
     await refreshAllowedList();
   } catch (e) {
@@ -506,9 +624,9 @@ async function removeAllowed() {
 btnAllowAdd?.addEventListener("click", upsertAllowed);
 btnAllowRemove?.addEventListener("click", removeAllowed);
 
-/** ---------------------------
- * CSA
- * --------------------------*/
+/* -------------------------------
+   CSA: default metric set
+-------------------------------- */
 function defaultMetricSet() {
   const pct = (label, goalPercent) => ({
     key: label,
@@ -539,6 +657,8 @@ function defaultMetricSet() {
       numLower("E/L", 0),
       pct("PU Prox", 2.5),
       numLower("CODE 85", 5),
+      numLower("Service Cross Issues", 5),
+      numLower("Scanner log out issues", 0),
       pct("PPOD Quality", 97.0),
       pct("SIG COM", 99.2),
       pct("DOOR TAG", 90.0)
@@ -555,19 +675,19 @@ async function ensureDefaultMetricSet(companyId) {
   return d;
 }
 
-function reportDocId(companyId, startStr, endStr) {
-  return `${companyId}__${startStr}__${endStr}`;
-}
-
 async function loadMetricSet(companyId) {
   const ref = doc(db, "csaMetricSets", companyId);
   const snap = await getDoc(ref);
   currentCsaMetricSet = snap.exists() ? snap.data() : await ensureDefaultMetricSet(companyId);
 
-  // normalize percent goals
+  // Normalize percent goals
   for (const m of (currentCsaMetricSet.metrics || [])) {
     if (m.type === "percent") m.goal = percentToFraction(m.goal);
   }
+}
+
+function reportDocId(companyId, startStr, endStr) {
+  return `${companyId}__${startStr}__${endStr}`;
 }
 
 async function loadReport(companyId, startStr, endStr) {
@@ -577,6 +697,7 @@ async function loadReport(companyId, startStr, endStr) {
   const ref = doc(db, "csaReports", id);
   const snap = await getDoc(ref);
 
+  // initialize empty
   currentCsaValuesByDate = {};
   for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
 
@@ -584,15 +705,16 @@ async function loadReport(companyId, startStr, endStr) {
 
   const data = snap.data() || {};
   const incoming = data.valuesByDate || {};
+
   for (const day of currentCsaDays) {
     currentCsaValuesByDate[day] = incoming[day] || {};
   }
 
-  // normalize percent values
-  const percentKeys = new Set((currentCsaMetricSet.metrics || []).filter(m => m.type === "percent").map(m => m.key));
+  // normalize percent values in report
+  const pctKeys = new Set((currentCsaMetricSet.metrics || []).filter(m => m.type === "percent").map(m => m.key));
   for (const day of currentCsaDays) {
     const row = currentCsaValuesByDate[day] || {};
-    for (const k of percentKeys) {
+    for (const k of pctKeys) {
       if (row[k] !== null && row[k] !== undefined) row[k] = percentToFraction(row[k]);
     }
   }
@@ -660,6 +782,15 @@ function isFail(metric, val) {
   return dir === "higher" ? (v < g) : (v > g);
 }
 
+function parseCellInput(metric, raw) {
+  const t = (raw || "").trim();
+  if (!t) return null;
+  const cleaned = t.replace("%", "").trim();
+  const n = toNumberOrNull(cleaned);
+  if (n === null) return null;
+  return metric.type === "percent" ? percentToFraction(n) : n;
+}
+
 function computeTotal(metric) {
   const vals = [];
   for (const day of currentCsaDays) {
@@ -675,24 +806,16 @@ function computeTotal(metric) {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-function parseCellInput(metric, raw) {
-  const t = (raw || "").trim();
-  if (!t) return null;
-  const cleaned = t.replace("%", "").trim();
-  const n = toNumberOrNull(cleaned);
-  if (n === null) return null;
-  return metric.type === "percent" ? percentToFraction(n) : n;
-}
-
-function setCellFailStyle(td, isFailNow) {
-  td.classList.toggle("csa-fail", !!isFailNow);
-  td.classList.toggle("csa-pass", !isFailNow && td.dataset.hasvalue === "1");
+function setCellStyle(td, metric, val) {
+  // Only color when there is a value
+  const hasValue = !(val === null || val === undefined);
+  td.dataset.hasvalue = hasValue ? "1" : "0";
+  td.classList.toggle("csa-fail", hasValue && isFail(metric, val));
+  td.classList.toggle("csa-pass", hasValue && !isFail(metric, val));
 }
 
 function recomputeTotalsRow() {
-  if (!currentCsaMetricSet?.metrics?.length) return;
-  const metrics = currentCsaMetricSet.metrics;
-
+  const metrics = currentCsaMetricSet?.metrics || [];
   for (let i = 0; i < metrics.length; i++) {
     const m = metrics[i];
     const td = csaTotalsTds[i];
@@ -715,7 +838,7 @@ function renderCsaTable() {
   const table = document.createElement("table");
   table.className = "csa-table";
 
-  // header
+  // Header row
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
   const th0 = document.createElement("th");
@@ -732,7 +855,7 @@ function renderCsaTable() {
 
   const tbody = document.createElement("tbody");
 
-  // goal row
+  // GOAL row
   const gr = document.createElement("tr");
   const g0 = document.createElement("td");
   g0.textContent = "GOAL";
@@ -741,12 +864,12 @@ function renderCsaTable() {
   for (const m of metrics) {
     const td = document.createElement("td");
     td.style.fontWeight = "800";
-    td.textContent = m.type === "percent" ? formatPercentFraction(percentToFraction(m.goal)) : String(m.goal ?? "");
+    td.textContent = (m.type === "percent") ? formatPercentFraction(percentToFraction(m.goal)) : String(m.goal ?? "");
     gr.appendChild(td);
   }
   tbody.appendChild(gr);
 
-  // day rows
+  // Day rows
   for (const day of currentCsaDays) {
     const tr = document.createElement("tr");
     const tdDay = document.createElement("td");
@@ -755,37 +878,30 @@ function renderCsaTable() {
 
     const row = currentCsaValuesByDate[day] || (currentCsaValuesByDate[day] = {});
 
-    metrics.forEach((m, idx) => {
+    metrics.forEach((m) => {
       const td = document.createElement("td");
       const val = row[m.key];
 
-      td.dataset.day = day;
-      td.dataset.key = m.key;
-
-      const hasValue = (val !== null && val !== undefined);
-      td.dataset.hasvalue = hasValue ? "1" : "0";
-
-      setCellFailStyle(td, isFail(m, val));
+      setCellStyle(td, m, val);
 
       if (currentRole === "management") {
         const input = document.createElement("input");
         input.type = "text";
         input.className = "input";
-        input.inputMode = "decimal"; // helps mobile keyboards; doesn't block "."
+        input.inputMode = "decimal";
         input.autocomplete = "off";
         input.spellcheck = false;
 
-        // show formatted value initially (but DO NOT reformat while typing)
-        if (!hasValue) input.value = "";
+        // show formatted value initially
+        if (val === null || val === undefined) input.value = "";
         else input.value = (m.type === "percent") ? formatPercentFraction(val) : String(val);
 
-        // let the user type anything; no parsing here
+        // DO NOT parse while typing (prevents focus loss and allows ".")
         input.addEventListener("input", () => {
           td.classList.remove("csa-fail", "csa-pass");
           td.dataset.hasvalue = input.value.trim() ? "1" : "0";
         });
 
-        // Enter commits (no extra click)
         input.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter") {
             ev.preventDefault();
@@ -793,25 +909,23 @@ function renderCsaTable() {
           }
         });
 
-        // commit on blur
+        // Commit on blur: parse + format + color + totals (NO re-render)
         input.addEventListener("blur", () => {
           const parsed = parseCellInput(m, input.value);
           row[m.key] = parsed;
 
-          // snap display to formatted
           if (parsed === null) input.value = "";
           else input.value = (m.type === "percent") ? formatPercentFraction(parsed) : String(parsed);
 
-          td.dataset.hasvalue = parsed === null ? "0" : "1";
-          setCellFailStyle(td, isFail(m, parsed));
+          setCellStyle(td, m, parsed);
           recomputeTotalsRow();
         });
 
         td.appendChild(input);
       } else {
-        td.textContent = hasValue
-          ? (m.type === "percent" ? formatPercentFraction(percentToFraction(val)) : String(val))
-          : "";
+        td.textContent = (val === null || val === undefined)
+          ? ""
+          : (m.type === "percent" ? formatPercentFraction(percentToFraction(val)) : String(val));
       }
 
       tr.appendChild(td);
@@ -820,7 +934,7 @@ function renderCsaTable() {
     tbody.appendChild(tr);
   }
 
-  // totals row
+  // TOTAL row
   const trT = document.createElement("tr");
   const tdT0 = document.createElement("td");
   tdT0.textContent = "TOTAL";
@@ -835,111 +949,35 @@ function renderCsaTable() {
   }
 
   tbody.appendChild(trT);
-
   table.appendChild(tbody);
   csaTableWrap.appendChild(table);
 
-  // fill totals once after render
   recomputeTotalsRow();
 }
 
-async function handleCsaLoad() {
-  try {
-    setMsg(csaMsg, "", "");
-    const companyId = csaCompanySelect?.value || selectedCompanyId;
-    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
-
-    const s = parseDateInput(csaStartDate?.value);
-    const e = parseDateInput(csaEndDate?.value);
-    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
-    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
-
-    const startStr = yyyyMmDd(s);
-    const endStr = yyyyMmDd(e);
-
-    currentCsaDays = eachDayInclusive(s, e);
-    selectedCompanyId = companyId;
-
-    await loadMetricSet(companyId);
-    const exists = await loadReport(companyId, startStr, endStr);
-
-    setMsg(csaMsg,
-      exists ? "Loaded." : "No report exists for this range. Management can click Create report.",
-      exists ? "ok" : "err"
-    );
-
-    renderCsaTable();
-  } catch (e) {
-    console.error(e);
-    setMsg(csaMsg, "Load failed: " + (e?.message || e), "err");
-  }
-}
-
-btnCsaLoad?.addEventListener("click", handleCsaLoad);
-
-btnCsaCreate?.addEventListener("click", async () => {
-  try {
-    if (currentRole !== "management") return;
-
-    const companyId = csaCompanySelect?.value || selectedCompanyId;
-    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
-
-    const s = parseDateInput(csaStartDate?.value);
-    const e = parseDateInput(csaEndDate?.value);
-    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
-    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
-
-    const startStr = yyyyMmDd(s);
-    const endStr = yyyyMmDd(e);
-
-    currentCsaDays = eachDayInclusive(s, e);
-    await loadMetricSet(companyId);
-    await createReport(companyId, startStr, endStr);
-  } catch (e) {
-    console.error(e);
-    setMsg(csaMsg, "Create failed: " + (e?.message || e), "err");
-  }
-});
-
-btnCsaSave?.addEventListener("click", async () => {
-  try {
-    if (currentRole !== "management") return;
-
-    const companyId = csaCompanySelect?.value || selectedCompanyId;
-    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
-
-    const s = parseDateInput(csaStartDate?.value);
-    const e = parseDateInput(csaEndDate?.value);
-    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
-    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
-
-    await saveReport(companyId, yyyyMmDd(s), yyyyMmDd(e));
-  } catch (e) {
-    console.error(e);
-    setMsg(csaMsg, "Save failed: " + (e?.message || e), "err");
-  }
-});
-
-/** Companies */
+/* -------------------------------
+   CSA: Companies
+-------------------------------- */
 function startCompaniesListener() {
   if (unsubCompanies) return;
+
   const qCompanies = query(collection(db, "companies"), orderBy("name", "asc"), limit(500));
   unsubCompanies = onSnapshot(qCompanies, (snap) => {
     companiesCache = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
     renderCompaniesUI();
   }, (err) => {
     console.error("Companies listener error:", err);
-    setMsg(csaMsg, "Companies read blocked: " + (err?.message || err), "err");
+    setMsg(csaMsg, "Companies blocked: " + err.message, "err");
   });
 }
 
 function renderCompaniesUI() {
-  // dropdown active
+  // Dropdown: active only
   if (csaCompanySelect) {
     const active = companiesCache.filter(c => c.active !== false);
     const prev = csaCompanySelect.value;
-    csaCompanySelect.innerHTML = "";
 
+    csaCompanySelect.innerHTML = "";
     const ph = document.createElement("option");
     ph.value = "";
     ph.textContent = "Select company...";
@@ -952,11 +990,13 @@ function renderCompaniesUI() {
       csaCompanySelect.appendChild(opt);
     }
 
-    if (prev && active.some(c => c.id === prev)) csaCompanySelect.value = prev;
-    if (!selectedCompanyId) selectedCompanyId = csaCompanySelect.value || null;
+    if (prev && active.some(c => c.id === prev)) {
+      csaCompanySelect.value = prev;
+      selectedCompanyId = prev;
+    }
   }
 
-  // list management only
+  // List: management only
   if (companyList) {
     companyList.innerHTML = "";
     if (currentRole === "management") {
@@ -964,8 +1004,9 @@ function renderCompaniesUI() {
         const row = document.createElement("div");
         row.className = "company-row";
         row.textContent = c.name || c.id;
+        row.style.cursor = "pointer";
         row.onclick = () => {
-          csaCompanySelect.value = c.id;
+          if (csaCompanySelect) csaCompanySelect.value = c.id;
           selectedCompanyId = c.id;
         };
         companyList.appendChild(row);
@@ -977,6 +1018,7 @@ function renderCompaniesUI() {
 btnCompanyAdd?.addEventListener("click", async () => {
   try {
     if (currentRole !== "management") return;
+
     const name = (companyName?.value || "").trim();
     if (!name) return setMsg(csaMsg, "Enter a company name.", "err");
 
@@ -990,17 +1032,94 @@ btnCompanyAdd?.addEventListener("click", async () => {
     }, { merge: true });
 
     await ensureDefaultMetricSet(id);
+
     setMsg(csaMsg, `Saved company: ${id}`, "ok");
     if (companyName) companyName.value = "";
   } catch (e) {
-    console.error(e);
     setMsg(csaMsg, "Failed to save company: " + (e?.message || e), "err");
   }
 });
 
-/** ---------------------------
- * Auth buttons
- * --------------------------*/
+/* -------------------------------
+   CSA: Load/Create/Save
+-------------------------------- */
+btnCsaLoad?.addEventListener("click", async () => {
+  try {
+    setMsg(csaMsg, "", "");
+    const companyId = csaCompanySelect?.value || selectedCompanyId;
+    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
+
+    const s = parseDateInput(csaStartDate?.value);
+    const e = parseDateInput(csaEndDate?.value);
+    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
+    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
+
+    const startStr = yyyyMmDd(s);
+    const endStr = yyyyMmDd(e);
+
+    selectedCompanyId = companyId;
+    currentCsaDays = eachDayInclusive(s, e);
+
+    await loadMetricSet(companyId);
+    const exists = await loadReport(companyId, startStr, endStr);
+
+    setMsg(csaMsg, exists ? "Loaded." : "No report exists for this range. Click Create report (management).", exists ? "ok" : "err");
+
+    renderCsaTable();
+  } catch (e) {
+    console.error(e);
+    setMsg(csaMsg, "Load failed: " + (e?.message || e), "err");
+  }
+});
+
+btnCsaCreate?.addEventListener("click", async () => {
+  try {
+    setMsg(csaMsg, "", "");
+    if (currentRole !== "management") return;
+
+    const companyId = csaCompanySelect?.value || selectedCompanyId;
+    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
+
+    const s = parseDateInput(csaStartDate?.value);
+    const e = parseDateInput(csaEndDate?.value);
+    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
+    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
+
+    const startStr = yyyyMmDd(s);
+    const endStr = yyyyMmDd(e);
+
+    selectedCompanyId = companyId;
+    currentCsaDays = eachDayInclusive(s, e);
+
+    await loadMetricSet(companyId);
+    await createReport(companyId, startStr, endStr);
+  } catch (e) {
+    setMsg(csaMsg, "Create failed: " + (e?.message || e), "err");
+  }
+});
+
+btnCsaSave?.addEventListener("click", async () => {
+  try {
+    setMsg(csaMsg, "", "");
+    if (currentRole !== "management") return;
+
+    const companyId = csaCompanySelect?.value || selectedCompanyId;
+    if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
+
+    const s = parseDateInput(csaStartDate?.value);
+    const e = parseDateInput(csaEndDate?.value);
+    if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
+    if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
+
+    await saveReport(companyId, yyyyMmDd(s), yyyyMmDd(e));
+  } catch (e) {
+    setMsg(csaMsg, "Save failed: " + (e?.message || e), "err");
+  }
+});
+
+/* -------------------------------
+   Auth actions
+-------------------------------- */
 btnSignIn?.addEventListener("click", async () => {
   setMsg(authMsg, "", "");
   try {
@@ -1014,7 +1133,7 @@ btnSignUp?.addEventListener("click", async () => {
   setMsg(authMsg, "", "");
   try {
     await createUserWithEmailAndPassword(auth, normalizeEmail(authEmail?.value), authPassword?.value || "");
-    setMsg(authMsg, "Account created. Ask management to add your email to allow-list if needed.", "ok");
+    setMsg(authMsg, "Account created. If you can't sign in, ask management to add your email to allow-list.", "ok");
   } catch (e) {
     setMsg(authMsg, e?.message || String(e), "err");
   }
@@ -1026,7 +1145,11 @@ btnSendLink?.addEventListener("click", async () => {
     const email = normalizeEmail(authEmail?.value);
     if (!email) return setMsg(authMsg, "Enter email first.", "err");
 
-    const actionCodeSettings = { url: window.location.href.split("#")[0], handleCodeInApp: true };
+    const actionCodeSettings = {
+      url: window.location.href.split("#")[0],
+      handleCodeInApp: true
+    };
+
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
     window.localStorage.setItem("emailForSignIn", email);
     setMsg(authMsg, "Sign-in link sent! Check your email.", "ok");
@@ -1035,8 +1158,11 @@ btnSendLink?.addEventListener("click", async () => {
   }
 });
 
-btnSignOut?.addEventListener("click", async () => { await signOut(auth); });
+btnSignOut?.addEventListener("click", async () => {
+  await signOut(auth);
+});
 
+// Optional: handle email link sign-in
 (async function handleEmailLink() {
   try {
     if (isSignInWithEmailLink(auth, window.location.href)) {
@@ -1052,9 +1178,9 @@ btnSignOut?.addEventListener("click", async () => { await signOut(auth); });
   }
 })();
 
-/** ---------------------------
- * Auth state
- * --------------------------*/
+/* -------------------------------
+   Auth state
+-------------------------------- */
 onAuthStateChanged(auth, async (user) => {
   setMsg(authMsg, "", "");
   setMsg(adminMsg, "", "");
@@ -1063,8 +1189,20 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentUser = null;
     currentRole = null;
-    userPill.textContent = "";
+    if (userPill) userPill.textContent = "";
     setSignedInUI(false);
+
+    // Unbind listeners
+    try { if (unsubOpen) unsubOpen(); } catch {}
+    try { if (unsubHistory) unsubHistory(); } catch {}
+    unsubOpen = null; unsubHistory = null;
+    openCache = []; histCache = [];
+
+    try { if (unsubCompanies) unsubCompanies(); } catch {}
+    unsubCompanies = null;
+    companiesCache = [];
+    selectedCompanyId = null;
+
     return;
   }
 
@@ -1078,22 +1216,22 @@ onAuthStateChanged(auth, async (user) => {
 
     currentUser = user;
     setRole(res.role);
-    userPill.textContent = `${user.email} • ${res.role}`;
+    if (userPill) userPill.textContent = `${user.email} • ${res.role}`;
     setSignedInUI(true);
 
+    // Default to Open tab
     setTab("open");
 
-    // tasks
+    // Start listeners
     bindTaskListeners();
+    startCompaniesListener();
 
-    // admin list
+    // Admin list
     if (res.role === "management") {
       await refreshAllowedList();
       await loadAssignableUsers();
     }
 
-    // companies
-    startCompaniesListener();
   } catch (e) {
     console.error(e);
     await signOut(auth);
