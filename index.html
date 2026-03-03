@@ -69,6 +69,7 @@
         <div class="tabs">
           <button class="tab active" data-tab="open">Open</button>
           <button class="tab" data-tab="history">History</button>
+          <button class="tab" data-tab="csa">CSA Summary</button>
           <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
         </div>
 
@@ -101,7 +102,44 @@
 
         <div id="historyList" class="list"></div>
         <div id="historyEmpty" class="empty hidden">No completed tasks yet.</div>
+      
+      <!-- CSA SUMMARY -->
+      <section id="panel-csa" class="card panel hidden">
+        <div class="panel-head">
+          <h2>CSA Summary</h2>
+          <div class="panel-actions">
+            <span class="pill">Reports</span>
+          </div>
+        </div>
+
+        <div class="row wrap">
+          <div class="field">
+            <label>Company</label>
+            <select id="csaCompanySelect"></select>
+          </div>
+
+          <div class="field">
+            <label>Start date</label>
+            <input id="csaStart" type="date" />
+          </div>
+
+          <div class="field">
+            <label>End date</label>
+            <input id="csaEnd" type="date" />
+          </div>
+
+          <div class="row">
+            <button id="btnCsaLoad" class="btn">Load</button>
+            <button id="btnCsaCreate" class="btn hidden">Create report</button>
+            <button id="btnCsaSave" class="btn primary hidden">Save</button>
+          </div>
+        </div>
+
+        <div id="csaMsg" class="msg hidden"></div>
+        <div id="csaTableWrap" class="table-wrap"></div>
       </section>
+
+</section>
 
       <!-- ADMIN -->
       <section id="panel-admin" class="card panel hidden">
@@ -145,7 +183,31 @@
           </div>
         </div>
       </section>
-    </section>
+    
+        <div class="grid2" style="margin-top:14px;">
+          <div class="card inner">
+            <h3>Companies</h3>
+            <p class="muted">Add companies for CSA Summary. Only active companies show in the dropdown.</p>
+
+            <div class="field">
+              <label>Company name</label>
+              <input id="companyName" type="text" placeholder="Aspire" />
+            </div>
+
+            <div class="row">
+              <button id="btnCompanyAdd" class="btn primary">Add / Update</button>
+            </div>
+
+            <div id="companyMsg" class="msg hidden"></div>
+          </div>
+
+          <div class="card inner">
+            <h3>Company list</h3>
+            <div id="companyList" class="list compact"></div>
+            <div id="companyEmpty" class="empty hidden">No companies yet.</div>
+          </div>
+        </div>
+</section>
 
     <!-- MODAL: NEW TASK -->
     <div id="modalBackdrop" class="backdrop hidden"></div>
