@@ -19,8 +19,8 @@ import {
   deleteDoc,
   addDoc,
   updateDoc,
-  serverTimestamp,
   arrayUnion,
+  serverTimestamp,
   query,
   where,
   orderBy,
@@ -33,90 +33,6 @@ import {
 -------------------------------- */
 const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
-
-/* -------------------------------
-   Comment Modal (no prompt popups)
--------------------------------- */
-let commentModalEl = null;
-let commentModalTaskId = null;
-
-function ensureCommentModal() {
-  if (commentModalEl) return;
-
-  // Minimal modal styles (keeps working even if CSS is strict)
-  const style = document.createElement("style");
-  style.textContent = `
-    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;}
-    .modal-overlay.hidden{display:none;}
-    .modal-card{width:min(560px,92vw);background:#111;border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.6);}
-    .modal-title{font-weight:800;margin-bottom:8px;}
-    #commentModalText{width:100%;resize:vertical;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0b0b0b;color:inherit;padding:10px;}
-    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px;}
-    .btn.primary{border-color:rgba(255,255,255,.25);}
-  `;
-  document.head.appendChild(style);
-
-  commentModalEl = document.createElement("div");
-  commentModalEl.id = "commentModal";
-  commentModalEl.className = "modal-overlay hidden";
-  commentModalEl.innerHTML = `
-    <div class="modal-card">
-      <div class="modal-title">Add comment</div>
-      <textarea id="commentModalText" rows="4" placeholder="Type your comment..."></textarea>
-      <div class="modal-actions">
-        <button id="commentModalCancel" class="btn">Cancel</button>
-        <button id="commentModalSave" class="btn primary">Save</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(commentModalEl);
-
-  const cancel = document.getElementById("commentModalCancel");
-  const save = document.getElementById("commentModalSave");
-  cancel?.addEventListener("click", closeCommentModal);
-  commentModalEl.addEventListener("click", (e) => {
-    if (e.target === commentModalEl) closeCommentModal();
-  });
-
-  save?.addEventListener("click", async () => {
-    const ta = document.getElementById("commentModalText");
-    const text = (ta?.value || "").trim();
-    if (!text) return;
-
-    try {
-      if (!currentUser) throw new Error("Not signed in.");
-      if (!commentModalTaskId) throw new Error("Missing task id.");
-
-      await updateDoc(doc(db, "tasks", commentModalTaskId), {
-        comments: arrayUnion({
-          by: currentUser.email || "",
-          text,
-          at: new Date().toISOString()
-        })
-      });
-
-      closeCommentModal();
-    } catch (e2) {
-      alert("Failed to add comment: " + (e2?.message || e2));
-    }
-  });
-}
-
-function openCommentModal(taskId) {
-  ensureCommentModal();
-  commentModalTaskId = taskId;
-  const ta = document.getElementById("commentModalText");
-  if (ta) ta.value = "";
-  commentModalEl.classList.remove("hidden");
-  setTimeout(() => ta?.focus?.(), 0);
-}
-
-function closeCommentModal() {
-  if (!commentModalEl) return;
-  commentModalTaskId = null;
-  commentModalEl.classList.add("hidden");
-}
-
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)");
@@ -281,6 +197,114 @@ let csaTotalsTds = [];
 /* -------------------------------
    UI helpers
 -------------------------------- */
+
+/* -------------------------------
+   Modal (no prompt/popups)
+-------------------------------- */
+let __modalEl = null;
+function ensureModal() {
+  if (__modalEl) return __modalEl;
+
+  const overlay = document.createElement("div");
+  overlay.id = "ttModalOverlay";
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(0,0,0,.55)";
+  overlay.style.display = "none";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.zIndex = "9999";
+  overlay.style.padding = "16px";
+
+  const box = document.createElement("div");
+  box.id = "ttModalBox";
+  box.style.width = "min(560px, 100%)";
+  box.style.borderRadius = "14px";
+  box.style.border = "1px solid rgba(255,255,255,.12)";
+  box.style.background = "rgba(20,20,24,.98)";
+  box.style.boxShadow = "0 18px 60px rgba(0,0,0,.55)";
+  box.style.padding = "14px";
+  box.style.display = "grid";
+  box.style.gap = "10px";
+
+  const title = document.createElement("div");
+  title.id = "ttModalTitle";
+  title.style.fontWeight = "800";
+  title.style.fontSize = "16px";
+
+  const ta = document.createElement("textarea");
+  ta.id = "ttModalTextarea";
+  ta.rows = 4;
+  ta.style.width = "100%";
+  ta.style.resize = "vertical";
+  ta.style.borderRadius = "10px";
+  ta.style.border = "1px solid rgba(255,255,255,.12)";
+  ta.style.padding = "10px";
+  ta.style.background = "rgba(0,0,0,.25)";
+  ta.style.color = "inherit";
+  ta.style.font = "inherit";
+  ta.style.outline = "none";
+
+  const row = document.createElement("div");
+  row.style.display = "flex";
+  row.style.gap = "10px";
+  row.style.justifyContent = "flex-end";
+
+  const btnCancel = document.createElement("button");
+  btnCancel.className = "btn";
+  btnCancel.textContent = "Cancel";
+
+  const btnOk = document.createElement("button");
+  btnOk.className = "btn primary";
+  btnOk.textContent = "Save";
+
+  row.appendChild(btnCancel);
+  row.appendChild(btnOk);
+
+  box.appendChild(title);
+  box.appendChild(ta);
+  box.appendChild(row);
+  overlay.appendChild(box);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal(null);
+  });
+
+  document.body.appendChild(overlay);
+
+  __modalEl = { overlay, box, title, ta, btnCancel, btnOk, resolver: null };
+  btnCancel.onclick = () => closeModal(null);
+
+  window.addEventListener("keydown", (e) => {
+    if (overlay.style.display !== "flex") return;
+    if (e.key === "Escape") closeModal(null);
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") closeModal((ta.value || "").trim());
+  });
+
+  return __modalEl;
+}
+
+function openTextModal(titleText, placeholder, initialValue) {
+  const m = ensureModal();
+  m.title.textContent = titleText || "Enter text";
+  m.ta.placeholder = placeholder || "";
+  m.ta.value = initialValue || "";
+  m.overlay.style.display = "flex";
+  setTimeout(() => m.ta.focus(), 0);
+  return new Promise((resolve) => {
+    m.resolver = resolve;
+    m.btnOk.onclick = () => closeModal((m.ta.value || "").trim());
+  });
+}
+
+function closeModal(val) {
+  const m = ensureModal();
+  m.overlay.style.display = "none";
+  const r = m.resolver;
+  m.resolver = null;
+  if (typeof r === "function") r(val);
+}
+
 function setMsg(el, text, kind) {
   if (!el) return;
   if (!text) {
@@ -428,8 +452,16 @@ function renderTaskCard(t, isHistory) {
     const btnComment = document.createElement("button");
     btnComment.className = "btn";
     btnComment.textContent = "Add comment";
-    btnComment.onclick = () => {
-      openCommentModal(t.id);
+    btnComment.onclick = async () => {
+      const text = await openTextModal("Add comment", "Type your comment…");
+      if (!text) return;
+      try {
+        await updateDoc(doc(db, "tasks", t.id), {
+          comments: arrayUnion({ by: currentUser?.email || "", text, at: new Date().toISOString() })
+        });
+      } catch (e) {
+        alert("Failed to add comment: " + (e?.message || e));
+      }
     };
 
     actions.appendChild(btnDone);
@@ -1090,43 +1122,40 @@ function renderCompaniesUI() {
         left.textContent = c.name || c.id;
         left.style.cursor = "pointer";
         left.style.flex = "1";
-        if (c.active === false) left.style.opacity = "0.6";
         left.onclick = () => {
           if (csaCompanySelect) csaCompanySelect.value = c.id;
           selectedCompanyId = c.id;
         };
 
-        const actions = document.createElement("div");
-        actions.style.display = "flex";
-        actions.style.gap = "8px";
+        const right = document.createElement("div");
+        right.style.display = "flex";
+        right.style.gap = "8px";
+
+        const isActive = c.active !== false;
 
         const btnToggle = document.createElement("button");
         btnToggle.className = "btn";
-        btnToggle.textContent = (c.active === false) ? "Restore" : "Delete";
+        btnToggle.textContent = isActive ? "Delete" : "Restore";
+        btnToggle.title = isActive ? "Hide this company (soft delete)" : "Show this company again";
         btnToggle.onclick = async (e) => {
           e.stopPropagation();
+          if (currentRole !== "management") return;
+          const ok = confirm(isActive ? `Delete (hide) company "${c.name || c.id}"?` : `Restore company "${c.name || c.id}"?`);
+          if (!ok) return;
           try {
-            if (currentRole !== "management") return;
-            const doingRestore = (c.active === false);
-            const ok = confirm(doingRestore
-              ? `Restore company "${c.name || c.id}"?`
-              : `Delete company "${c.name || c.id}"?\n\nThis hides it from the dropdown. (Reports/metrics stay in Firestore.)`);
-            if (!ok) return;
-
-            await setDoc(doc(db, "companies", c.id), {
-              active: doingRestore ? true : false,
+            await updateDoc(doc(db, "companies", c.id), {
+              active: !isActive,
               updatedAt: serverTimestamp()
-            }, { merge: true });
-
-            setMsg(csaMsg, doingRestore ? "Company restored." : "Company deleted (hidden).", "ok");
-          } catch (e2) {
-            setMsg(csaMsg, "Company update failed: " + (e2?.message || e2), "err");
+            });
+          } catch (err) {
+            alert("Failed to update company: " + (err?.message || err));
           }
         };
 
-        actions.appendChild(btnToggle);
+        right.appendChild(btnToggle);
+
         row.appendChild(left);
-        row.appendChild(actions);
+        row.appendChild(right);
         companyList.appendChild(row);
       }
     }
