@@ -432,7 +432,6 @@ function bindTaskListeners() {
   const openQ = query(
     collection(db, "tasks"),
     where("status", "==", "open"),
-    orderBy("createdAt", "desc"),
     limit(200)
   );
 
@@ -442,7 +441,6 @@ function bindTaskListeners() {
   const completedQ = query(
     collection(db, "tasks"),
     where("status", "==", "completed"),
-    orderBy("createdAt", "desc"),
     limit(200)
   );
   const doneQ = query(
@@ -450,7 +448,8 @@ function bindTaskListeners() {
     where("status", "==", "done"),
     limit(200)
   );
-unsubOpen = onSnapshot(openQ, (snap) => {
+
+  unsubOpen = onSnapshot(openQ, (snap) => {
     openCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderOpenFromCache();
   }, (err) => {
