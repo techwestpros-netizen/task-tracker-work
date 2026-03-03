@@ -119,6 +119,25 @@ const adminMsg = $("adminMsg");
 const allowedList = $("allowedList");
 const allowedEmpty = $("allowedEmpty");
 
+/** ---------------------------
+ * CSA Summary + Companies (Management)
+ * --------------------------*/
+const companyName = $("companyName");
+const btnCompanyAdd = $("btnCompanyAdd");
+const companyMsg = $("companyMsg");
+const companyList = $("companyList");
+const companyEmpty = $("companyEmpty");
+
+const csaCompanySelect = $("csaCompanySelect");
+const csaStart = $("csaStart");
+const csaEnd = $("csaEnd");
+const btnCsaLoad = $("btnCsaLoad");
+const btnCsaCreate = $("btnCsaCreate");
+const btnCsaSave = $("btnCsaSave");
+const csaMsg = $("csaMsg");
+const csaTableWrap = $("csaTableWrap");
+
+
 const backdrop = $("modalBackdrop");
 const taskModal = $("taskModal");
 const btnModalClose = $("btnModalClose");
@@ -143,6 +162,9 @@ function setRole(role){
   currentRole = role;
   show(btnNewTask, role === "management");
   show(tabAdmin, role === "management");
+  // CSA Summary: management can create/save; everyone can view
+  show(btnCsaCreate, role === "management");
+  show(btnCsaSave, role === "management");
 }
 
 function setSignedInUI(yes){
@@ -162,12 +184,17 @@ function setTab(tab){
   show($("panel-open"), tab === "open");
   show($("panel-history"), tab === "history");
   show($("panel-admin"), tab === "admin");
+  show($("panel-csa"), tab === "csa");
   refreshVisibleLists();
 }
 
 function refreshVisibleLists(){
   const tab = getCurrentTab();
-  // nothing special here; listeners keep lists updated.
+  if(tab === "csa"){
+    ensureDefaultCsaDates();
+    // only load if we have companies
+    loadCsaReport();
+  }
 }
 
 /** ---------------------------
@@ -189,6 +216,620 @@ async function requireAllowedUser(user){
   if(!role) return { ok:false, reason:"This email is not on the allow-list." };
   return { ok:true, role };
 }
+
+/** ---------------------------
+ * CSA Summary
+ * --------------------------*/
+
+// Default metric template (derived from your Excel)
+const DEFAULT_CSA_METRICS = [
+  {
+    "key": "RIB",
+    "label": "RIB",
+    "goal": 0.985,
+    "type": "percent",
+    "direction": "higher",
+    "totalMode": "avg"
+  },
+  {
+    "key": "LIB",
+    "label": "LIB",
+    "goal": 0.99,
+    "type": "percent",
+    "direction": "higher",
+    "totalMode": "avg"
+  },
+  {
+    "key": "DNA",
+    "label": "DNA",
+    "goal": 5,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "CODE 10",
+    "label": "CODE 10",
+    "goal": 5,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "CODE 12",
+    "label": "CODE 12",
+    "goal": 5,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "MPU",
+    "label": "MPU",
+    "goal": 0,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "E/L",
+    "label": "E/L",
+    "goal": 0,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "PU Prox",
+    "label": "PU Prox",
+    "goal": 0.025,
+    "type": "percent",
+    "direction": "lower",
+    "totalMode": "avg"
+  },
+  {
+    "key": "CODE 85",
+    "label": "CODE 85",
+    "goal": 5,
+    "type": "number",
+    "direction": "lower",
+    "totalMode": "sum"
+  },
+  {
+    "key": "PPOD",
+    "label": "PPOD",
+    "goal": 0.97,
+    "type": "percent",
+    "direction": "higher",
+    "totalMode": "avg"
+  },
+  {
+    "key": "SIG COM",
+    "label": "SIG COM",
+    "goal": 0.992,
+    "type": "percent",
+    "direction": "higher",
+    "totalMode": "avg"
+  },
+  {
+    "key": "DOOR TAG",
+    "label": "DOOR TAG",
+    "goal": 0.9,
+    "type": "percent",
+    "direction": "higher",
+    "totalMode": "avg"
+  }
+];
+
+// in-memory CSA state
+let csaState = {
+  companyId: null,
+  start: null,
+  end: null,
+  reportId: null,
+  metrics: [],
+  valuesByDate: {}
+};
+
+function slugCompanyId(name){
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function toISODate(d){
+  // d: Date
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseISODate(s){
+  // s: 'YYYY-MM-DD'
+  const [y,m,d] = (s||"").split("-").map(n => parseInt(n,10));
+  if(!y || !m || !d) return null;
+  return new Date(y, m-1, d);
+}
+
+function datesInRange(startISO, endISO){
+  const a = parseISODate(startISO);
+  const b = parseISODate(endISO);
+  if(!a || !b) return [];
+  const out = [];
+  const cur = new Date(a.getTime());
+  while(cur <= b){
+    out.push(toISODate(cur));
+    cur.setDate(cur.getDate()+1);
+  }
+  return out;
+}
+
+function fmtMetricValue(metric, val){
+  if(val === null || val === undefined || val === "") return "";
+  const num = Number(val);
+  if(Number.isNaN(num)) return "";
+  if(metric.type === "percent") {
+    return (num*100).toFixed(2) + "%";
+  }
+  // keep integers if possible
+  if(Number.isInteger(num)) return String(num);
+  return String(num);
+}
+
+function normalizeInput(metric, raw){
+  if(raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if(s === "") return null;
+  // allow user to type 98.5 for percent or 0.985; interpret > 1 as percent points
+  let num = Number(s.replace(/%/g,""));
+  if(Number.isNaN(num)) return null;
+  if(metric.type === "percent") {
+    if(num > 1) num = num / 100;
+    // clamp reasonable
+    if(num < 0) num = 0;
+    if(num > 1) num = 1;
+  }
+  return num;
+}
+
+function cellStatus(metric, val){
+  if(val === null || val === undefined) return "";
+  const goal = Number(metric.goal);
+  if(Number.isNaN(goal)) return "";
+  const v = Number(val);
+  if(Number.isNaN(v)) return "";
+  const higher = metric.direction === "higher";
+
+  // Simple thresholds:
+  // - OK meets goal
+  // - WARN within 1% (percent metrics) or within 1 (number metrics)
+  // - BAD otherwise
+  const ok = higher ? (v >= goal) : (v <= goal);
+  if(ok) return "ok";
+
+  if(metric.type === "percent") {
+    const delta = Math.abs(v - goal);
+    if(delta <= 0.01) return "warn"; // within 1 percentage point
+  } else {
+    const delta = Math.abs(v - goal);
+    if(delta <= 1) return "warn";
+  }
+  return "bad";
+}
+
+function computeTotal(metric, dateKeys, valuesByDate){
+  const nums = [];
+  for(const d of dateKeys){
+    const v = valuesByDate?.[d]?.[metric.key];
+    if(v === null || v === undefined) continue;
+    const n = Number(v);
+    if(Number.isNaN(n)) continue;
+    nums.push(n);
+  }
+  if(nums.length === 0) return null;
+  if(metric.totalMode === "sum") {
+    return nums.reduce((a,b)=>a+b,0);
+  }
+  // avg default
+  return nums.reduce((a,b)=>a+b,0) / nums.length;
+}
+
+
+
+function updateCsaTotalsAndColors(metrics, dates){
+  const table = csaTableWrap?.querySelector("table.csa-table");
+  if(!table) return;
+
+  // Update per-cell class (management inputs)
+  if(currentRole === "management"){
+    table.querySelectorAll('input[data-date][data-key]').forEach(inp => {
+      const d = inp.dataset.date;
+      const k = inp.dataset.key;
+      const m = metrics.find(x => x.key === k);
+      if(!m) return;
+      const v = csaState.valuesByDate?.[d]?.[k];
+      const st = cellStatus(m, v);
+      const td = inp.closest("td");
+      if(td){
+        td.classList.remove("cell-ok","cell-warn","cell-bad");
+        if(st) td.classList.add(`cell-${st}`);
+      }
+    });
+  }
+
+  // Update TOTAL row
+  const totalRow = table.querySelector("tr.csa-row-total");
+  if(!totalRow) return;
+  const tds = totalRow.querySelectorAll("td");
+  // tds[0] is label
+  metrics.forEach((m, i) => {
+    const t = computeTotal(m, dates, csaState.valuesByDate);
+    const st = cellStatus(m, t);
+    const td = tds[i+1];
+    if(!td) return;
+    td.classList.remove("cell-ok","cell-warn","cell-bad");
+    if(st) td.classList.add(`cell-${st}`);
+    td.textContent = fmtMetricValue(m, t);
+  });
+}
+function ensureDefaultCsaDates(){
+  // If empty, default to last 7 days ending today
+  const today = new Date();
+  const end = toISODate(today);
+  const startD = new Date(today.getTime());
+  startD.setDate(startD.getDate()-6);
+  const start = toISODate(startD);
+  if(csaStart && !csaStart.value) csaStart.value = start;
+  if(csaEnd && !csaEnd.value) csaEnd.value = end;
+}
+
+async function upsertCompanyByName(name){
+  const clean = (name || "").trim();
+  if(!clean) throw new Error("Enter a company name.");
+  const id = slugCompanyId(clean);
+  if(!id) throw new Error("Company name is invalid.");
+  const ref = doc(db, "companies", id);
+
+  // create/update company
+  const snap = await getDoc(ref);
+  if(!snap.exists()) {
+    await setDoc(ref, {
+      name: clean,
+      active: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  } else {
+    await setDoc(ref, {
+      name: clean,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  }
+
+  // initialize metric set if missing
+  const mref = doc(db, "csaMetricSets", id);
+  const msnap = await getDoc(mref);
+  if(!msnap.exists()) {
+    await setDoc(mref, {
+      companyId: id,
+      metrics: DEFAULT_CSA_METRICS,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp()
+    });
+  }
+
+  return id;
+}
+
+function renderCompanyList(items){
+  if(!companyList) return;
+  companyList.innerHTML = "";
+  show(companyEmpty, items.length === 0);
+
+  for(const c of items){
+    const div = document.createElement("div");
+    div.className = "item";
+    const badgeClass = c.active ? "ok" : "off";
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div>
+          <div style="font-weight:700;">${escapeHtml(c.name)}</div>
+          <div class="muted" style="font-size:12px;">ID: ${escapeHtml(c.id)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge ${badgeClass}">${c.active ? "Active" : "Inactive"}</span>
+          <button class="btn" data-act="toggle" data-id="${escapeAttr(c.id)}">${c.active ? "Disable" : "Enable"}</button>
+          <button class="btn danger" data-act="delete" data-id="${escapeAttr(c.id)}">Delete</button>
+        </div>
+      </div>
+    `;
+    companyList.appendChild(div);
+  }
+
+  companyList.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const act = btn.dataset.act;
+      const id = btn.dataset.id;
+      if(!id) return;
+      try{
+        if(act === "toggle") {
+          const ref = doc(db, "companies", id);
+          const snap = await getDoc(ref);
+          if(!snap.exists()) return;
+          const data = snap.data();
+          await setDoc(ref, {
+            active: !data.active,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        } else if(act === "delete") {
+          // NOTE: This deletes the company record only (reports remain).
+          // You can manually delete reports later if you ever want.
+          await deleteDoc(doc(db, "companies", id));
+        }
+      }catch(e){
+        setMsg(companyMsg, e?.message || String(e), "err");
+      }
+    });
+  });
+}
+
+function renderCompanyDropdown(items){
+  if(!csaCompanySelect) return;
+  const active = items.filter(x => x.active);
+  const prev = csaCompanySelect.value;
+  csaCompanySelect.innerHTML = "";
+  for(const c of active){
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name;
+    csaCompanySelect.appendChild(opt);
+  }
+  // keep selection when possible
+  if(prev && active.some(x=>x.id===prev)) {
+    csaCompanySelect.value = prev;
+  }
+}
+
+function bindCompanySnapshots(){
+  // always listen (dropdown available to everyone)
+  const q = query(collection(db, "companies"), orderBy("name"));
+  return onSnapshot(q, (snap) => {
+    const items = [];
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
+      items.push({
+        id: docSnap.id,
+        name: d?.name || docSnap.id,
+        active: d?.active !== false
+      });
+    });
+    renderCompanyDropdown(items);
+    // company list only meaningful for management
+    if(currentRole === "management") {
+      renderCompanyList(items);
+    }
+  }, (err) => {
+    // avoid crashing UI; show in CSA msg
+    setMsg(csaMsg, "Failed to load companies: " + (err?.message || err), "err");
+  });
+}
+
+let unsubCompanies = null;
+
+async function loadMetricSet(companyId){
+  const ref = doc(db, "csaMetricSets", companyId);
+  const snap = await getDoc(ref);
+  if(!snap.exists()) return DEFAULT_CSA_METRICS;
+  const d = snap.data();
+  return Array.isArray(d?.metrics) ? d.metrics : DEFAULT_CSA_METRICS;
+}
+
+function reportDocId(companyId, startISO, endISO){
+  return `${companyId}__${startISO}__${endISO}`;
+}
+
+async function loadCsaReport(){
+  setMsg(csaMsg, "", "");
+  ensureDefaultCsaDates();
+
+  const companyId = csaCompanySelect?.value;
+  const startISO = csaStart?.value;
+  const endISO = csaEnd?.value;
+
+  if(!companyId) {
+    setMsg(csaMsg, "No companies yet. Add one in Management → Companies.", "warn");
+    csaTableWrap.innerHTML = "";
+    return;
+  }
+  if(!startISO || !endISO) {
+    setMsg(csaMsg, "Choose a start and end date.", "warn");
+    return;
+  }
+
+  const dates = datesInRange(startISO, endISO);
+  if(dates.length === 0) {
+    setMsg(csaMsg, "Invalid date range.", "err");
+    return;
+  }
+  if(dates.length > 31) {
+    setMsg(csaMsg, "Date range too large. Keep it to 31 days or less.", "warn");
+    return;
+  }
+
+  const metrics = await loadMetricSet(companyId);
+  const rid = reportDocId(companyId, startISO, endISO);
+  const ref = doc(db, "csaReports", rid);
+  const snap = await getDoc(ref);
+
+  if(!snap.exists()) {
+    // no report yet
+    csaState = {
+      companyId,
+      start: startISO,
+      end: endISO,
+      reportId: rid,
+      metrics,
+      valuesByDate: Object.fromEntries(dates.map(d => [d, {}]))
+    };
+    csaTableWrap.innerHTML = "";
+    setMsg(csaMsg, "No report for this range. Click “Create report” to start.", "warn");
+    // show create only for management (already controlled in setRole)
+    return;
+  }
+
+  const data = snap.data() || {};
+  csaState = {
+    companyId,
+    start: startISO,
+    end: endISO,
+    reportId: rid,
+    metrics,
+    valuesByDate: data.valuesByDate || {}
+  };
+  // ensure all dates exist
+  for(const d of dates){
+    if(!csaState.valuesByDate[d]) csaState.valuesByDate[d] = {};
+  }
+  renderCsaTable();
+}
+
+async function createCsaReport(){
+  if(currentRole !== "management") return;
+  setMsg(csaMsg, "", "");
+  await loadCsaReport();
+  if(!csaState?.companyId) return;
+
+  const dates = datesInRange(csaState.start, csaState.end);
+  const valuesByDate = Object.fromEntries(dates.map(d => [d, csaState.valuesByDate?.[d] || {}]));
+  const payload = {
+    companyId: csaState.companyId,
+    startDate: csaState.start,
+    endDate: csaState.end,
+    valuesByDate,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(doc(db, "csaReports", csaState.reportId), payload);
+  setMsg(csaMsg, "Report created. Enter values and click Save.", "ok");
+  csaState.valuesByDate = valuesByDate;
+  renderCsaTable();
+}
+
+async function saveCsaReport(){
+  if(currentRole !== "management") return;
+  setMsg(csaMsg, "", "");
+
+  if(!csaState?.reportId) {
+    setMsg(csaMsg, "Load or create a report first.", "warn");
+    return;
+  }
+
+  await setDoc(doc(db, "csaReports", csaState.reportId), {
+    companyId: csaState.companyId,
+    startDate: csaState.start,
+    endDate: csaState.end,
+    valuesByDate: csaState.valuesByDate,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  setMsg(csaMsg, "Saved.", "ok");
+  renderCsaTable(); // re-render totals/colors
+}
+
+function renderCsaTable(){
+  if(!csaTableWrap) return;
+  const metrics = csaState.metrics || [];
+  const dates = datesInRange(csaState.start, csaState.end);
+
+  const thead = `
+    <thead>
+      <tr>
+        <th>Date</th>
+        ${metrics.map(m => `<th>${escapeHtml(m.label || m.key)}</th>`).join("")}
+      </tr>
+    </thead>
+  `;
+
+  // GOAL row
+  const goalRow = `
+    <tr class="csa-row-goal">
+      <td>GOAL</td>
+      ${metrics.map(m => `<td>${fmtMetricValue(m, m.goal)}</td>`).join("")}
+    </tr>
+  `;
+
+  // daily rows
+  const rows = dates.map(d => {
+    const displayDate = d; // keep ISO for now
+    const cells = metrics.map(m => {
+      const val = csaState.valuesByDate?.[d]?.[m.key];
+      const status = cellStatus(m, val);
+      const cls = status ? `cell-${status}` : "";
+      if(currentRole === "management") {
+        const raw = (val === null || val === undefined) ? "" : String(val);
+        return `
+          <td class="${cls}">
+            <input
+              data-date="${escapeAttr(d)}"
+              data-key="${escapeAttr(m.key)}"
+              value="${escapeAttr(raw)}"
+              placeholder=""
+            />
+          </td>
+        `;
+      }
+      return `<td class="${cls}">${fmtMetricValue(m, val)}</td>`;
+    }).join("");
+    return `<tr><td>${escapeHtml(displayDate)}</td>${cells}</tr>`;
+  }).join("");
+
+  // TOTAL row
+  const totalCells = metrics.map(m => {
+    const t = computeTotal(m, dates, csaState.valuesByDate);
+    const status = cellStatus(m, t);
+    const cls = status ? `cell-${status}` : "";
+    return `<td class="${cls}">${fmtMetricValue(m, t)}</td>`;
+  }).join("");
+
+  const totalRow = `<tr class="csa-row-total"><td>TOTAL</td>${totalCells}</tr>`;
+
+  csaTableWrap.innerHTML = `
+    <table class="csa-table">
+      ${thead}
+      <tbody>
+        ${goalRow}
+        ${rows}
+        ${totalRow}
+      </tbody>
+    </table>
+  `;
+
+  // bind input events
+  if(currentRole === "management") {
+    csaTableWrap.querySelectorAll("input[data-date][data-key]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const dateKey = inp.dataset.date;
+        const metricKey = inp.dataset.key;
+        const metric = metrics.find(x => x.key === metricKey);
+        if(!metric) return;
+        const val = normalizeInput(metric, inp.value);
+        if(!csaState.valuesByDate[dateKey]) csaState.valuesByDate[dateKey] = {};
+        if(val === null) {
+          delete csaState.valuesByDate[dateKey][metricKey];
+        } else {
+          csaState.valuesByDate[dateKey][metricKey] = val;
+        }
+        // live update totals/colors
+        updateCsaTotalsAndColors(metrics, dates);
+});
+    });
+  }
+}
+
+
 
 /** ---------------------------
  * Tasks
@@ -634,6 +1275,42 @@ searchInput.addEventListener("input", () => {
 btnAllowAdd.onclick = upsertAllowed;
 btnAllowRemove.onclick = removeAllowed;
 
+// Companies (Management)
+if(btnCompanyAdd){
+  btnCompanyAdd.onclick = async () => {
+    try{
+      setMsg(companyMsg, "", "");
+      if(currentRole !== "management"){
+        setMsg(companyMsg, "Management only.", "err");
+        return;
+      }
+      const id = await upsertCompanyByName(companyName.value);
+      companyName.value = "";
+      setMsg(companyMsg, "Saved company: " + id, "ok");
+    }catch(e){
+      setMsg(companyMsg, e?.message || String(e), "err");
+    }
+  };
+}
+
+// CSA Summary events
+if(btnCsaLoad) btnCsaLoad.onclick = () => loadCsaReport();
+if(btnCsaCreate) btnCsaCreate.onclick = () => createCsaReport();
+if(btnCsaSave) btnCsaSave.onclick = () => saveCsaReport();
+
+// load on company/date change (lightweight)
+if(csaCompanySelect) csaCompanySelect.addEventListener("change", () => {
+  if(getCurrentTab() === "csa") loadCsaReport();
+});
+if(csaStart) csaStart.addEventListener("change", () => {
+  if(getCurrentTab() === "csa") loadCsaReport();
+});
+if(csaEnd) csaEnd.addEventListener("change", () => {
+  if(getCurrentTab() === "csa") loadCsaReport();
+});
+
+
+
 /** ---------------------------
  * Handle email-link sign in (optional)
  * --------------------------*/
@@ -665,6 +1342,7 @@ onAuthStateChanged(auth, async (user) => {
     userPill.textContent = "";
     setSignedInUI(false);
     unbindTaskListeners();
+    if(unsubCompanies){ try{unsubCompanies();}catch{} unsubCompanies=null; }
     return;
   }
 
@@ -687,6 +1365,12 @@ onAuthStateChanged(auth, async (user) => {
 
     // Bind task listeners
     unbindTaskListeners();
+
+    // Companies + CSA
+    if(unsubCompanies){ try{unsubCompanies();}catch{} unsubCompanies=null; }
+    unsubCompanies = bindCompanySnapshots();
+    ensureDefaultCsaDates();
+
     bindTaskListeners();
 
     // Admin list
