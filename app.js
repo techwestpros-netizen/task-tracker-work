@@ -65,7 +65,6 @@ function yyyyMmDd(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 function parseDateInput(val) {
-  // expects YYYY-MM-DD
   if (!val) return null;
   const [y, m, day] = val.split("-").map(Number);
   if (!y || !m || !day) return null;
@@ -84,6 +83,31 @@ function toNumberOrNull(v) {
   if (v === "" || v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Percent helpers:
+ * Accept stored percent as either fraction (0.985) or percent (98.5).
+ * Normalize to FRACTION for comparisons and internal calculations.
+ */
+function percentToFraction(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  // if it looks like 0.0–1.5 => treat as fraction
+  if (Math.abs(n) <= 1.5) return n;
+  // else treat as percent (0–100+)
+  return n / 100;
+}
+function fractionToPercentNumber(f) {
+  if (f === null || f === undefined) return null;
+  const n = Number(f);
+  if (!Number.isFinite(n)) return null;
+  return n * 100;
+}
+function formatPercent(fraction) {
+  const p = fractionToPercentNumber(fraction);
+  if (p === null) return "";
+  return `${p.toFixed(2)}%`;
 }
 
 /** ---------------------------
@@ -153,7 +177,7 @@ const csaTableWrap = $("csaTableWrap") || $("csaTableContainer") || $("csaTable"
  * App state
  * --------------------------*/
 let currentUser = null;
-let currentRole = null; // 'management' | 'user'
+let currentRole = null;
 let unsubOpen = null;
 let unsubHistory = null;
 
@@ -162,14 +186,14 @@ let histCache = [];
 
 // CSA state
 let unsubCompanies = null;
-let companiesCache = []; // [{id,name,active}]
+let companiesCache = [];
 let selectedCompanyId = null;
 
 // CSA Report state
-let currentCsaMetricSet = null;     // { metrics: [...] }
-let currentCsaReportId = null;      // doc id in csaReports
-let currentCsaValuesByDate = {};    // { "YYYY-MM-DD": { metricKey: number|null } }
-let currentCsaDays = [];            // ["YYYY-MM-DD", ...]
+let currentCsaMetricSet = null;
+let currentCsaReportId = null;
+let currentCsaValuesByDate = {};
+let currentCsaDays = [];
 let currentCsaDirty = false;
 
 function setMsg(el, text, kind) {
@@ -188,6 +212,9 @@ function setRole(role) {
   currentRole = role;
   show(btnNewTask, role === "management");
   show(tabAdmin, role === "management");
+  show(btnCsaCreate, role === "management");
+  show(btnCsaSave, role === "management");
+  show(btnCompanySave, role === "management");
 }
 
 function setSignedInUI(yes) {
@@ -206,13 +233,12 @@ function setTab(tab) {
 
   if (tab === "csa") {
     renderCompaniesUI();
-    // optional: auto-load if selections exist
     renderCsaTable();
   }
 }
 
 /** ---------------------------
- * Allow-list + role lookup (KEEP AS-IS)
+ * Allow-list + role lookup (UNCHANGED METHOD)
  * --------------------------*/
 async function requireAllowedUser(user) {
   const email = normalizeEmail(user?.email);
@@ -523,7 +549,6 @@ function startCompaniesListener() {
 }
 
 function renderCompaniesUI() {
-  // List panel (management only)
   if (companyListEl) {
     companyListEl.innerHTML = "";
     if (currentRole === "management") {
@@ -552,7 +577,6 @@ function renderCompaniesUI() {
     }
   }
 
-  // Dropdown (active only)
   if (csaCompanySelect) {
     const activeCompanies = companiesCache.filter(c => c.active !== false);
     const prev = csaCompanySelect.value;
@@ -598,7 +622,6 @@ async function saveCompanyFromUI() {
       updatedAt: serverTimestamp()
     }, { merge: true });
 
-    // Ensure metric set exists for this company
     await ensureDefaultMetricSet(id);
 
     setMsg(csaMsg, `Saved company: ${id}`, "ok");
@@ -611,17 +634,13 @@ async function saveCompanyFromUI() {
 /** ---------------------------
  * CSA: Metric set + reports + table
  * --------------------------*/
-
-// Default metric template (based on your Excel-style screenshot)
 function defaultMetricSet() {
-  // type: "percent" or "number"
-  // totalMode: "avg" for percent metrics, "sum" for count metrics
-  // direction: "higher" or "lower" (for future color rules; not required to render)
   const pct = (label, goalPercent) => ({
     key: label,
     label,
     type: "percent",
-    goal: goalPercent,   // store as percent number, e.g. 98.5
+    // store percent goals as FRACTION internally (0.985)
+    goal: goalPercent / 100,
     totalMode: "avg",
     direction: "higher"
   });
@@ -639,13 +658,13 @@ function defaultMetricSet() {
     metrics: [
       pct("RIB", 98.5),
       pct("LIB", 99.0),
-      numLower("DNAs", 5),
-      numLower("Code 10", 5),
-      numLower("Code 12", 5),
+      numLower("DNA", 5),
+      numLower("CODE 10", 5),
+      numLower("CODE 12", 5),
       numLower("MPU", 0),
       numLower("E/L", 0),
       pct("PU Prox", 2.5),
-      numLower("Code 85s", 5),
+      numLower("CODE 85", 5),
       numLower("Service Cross Issues", 5),
       numLower("Scanner log out issues", 0),
       pct("PPOD Quality", 97.0),
@@ -702,7 +721,6 @@ async function createReport(companyId, startStr, endStr) {
   const id = reportDocId(companyId, startStr, endStr);
   const ref = doc(db, "csaReports", id);
 
-  // Initialize valuesByDate with empty rows for each day
   const valuesByDate = {};
   for (const day of currentCsaDays) valuesByDate[day] = {};
 
@@ -747,19 +765,54 @@ async function saveReport(companyId, startStr, endStr) {
   setMsg(csaMsg, "Saved.", "ok");
 }
 
-function formatCell(metric, val) {
-  if (val === null || val === undefined) return "";
-  if (metric.type === "percent") return `${Number(val).toFixed(2)}`;
-  return `${Number(val)}`;
+function getGoalFraction(metric) {
+  if (metric.type !== "percent") return null;
+  return percentToFraction(metric.goal);
 }
 
-function computeTotal(metric, dayValues) {
+function parseInputForMetric(metric, raw) {
+  const t = (raw || "").trim();
+  if (!t) return null;
+
+  // allow "98.5%" or "98.5"
+  const cleaned = t.replace("%", "").trim();
+  const n = toNumberOrNull(cleaned);
+  if (n === null) return null;
+
+  if (metric.type === "percent") {
+    // store as FRACTION
+    return percentToFraction(n);
+  }
+  return n;
+}
+
+function displayValue(metric, storedVal) {
+  if (storedVal === null || storedVal === undefined) return "";
+  if (metric.type === "percent") return formatPercent(percentToFraction(storedVal));
+  return String(storedVal);
+}
+
+function displayGoal(metric) {
+  if (metric.goal === null || metric.goal === undefined) return "";
+  if (metric.type === "percent") return formatPercent(getGoalFraction(metric));
+  return String(metric.goal);
+}
+
+function computeTotal(metric, valuesByDate) {
   const vals = [];
   for (const day of currentCsaDays) {
-    const row = dayValues[day] || {};
+    const row = valuesByDate[day] || {};
     const v = row[metric.key];
     if (v === null || v === undefined) continue;
-    if (Number.isFinite(v)) vals.push(v);
+    const n = Number(v);
+    if (!Number.isFinite(n)) continue;
+
+    if (metric.type === "percent") {
+      const frac = percentToFraction(n);
+      if (frac !== null) vals.push(frac);
+    } else {
+      vals.push(n);
+    }
   }
 
   if (vals.length === 0) return null;
@@ -767,8 +820,33 @@ function computeTotal(metric, dayValues) {
   if (metric.totalMode === "sum") {
     return vals.reduce((a, b) => a + b, 0);
   }
-  // avg default
   return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function isFail(metric, storedVal) {
+  if (storedVal === null || storedVal === undefined) return false;
+  if (metric.goal === null || metric.goal === undefined) return false;
+
+  const dir = metric.direction || (metric.type === "percent" ? "higher" : "lower");
+
+  if (metric.type === "percent") {
+    const v = percentToFraction(storedVal);
+    const g = getGoalFraction(metric);
+    if (v === null || g === null) return false;
+    return dir === "higher" ? (v < g) : (v > g);
+  }
+
+  // number metric
+  const v = Number(storedVal);
+  const g = Number(metric.goal);
+  if (!Number.isFinite(v) || !Number.isFinite(g)) return false;
+  return dir === "higher" ? (v < g) : (v > g);
+}
+
+function isPass(metric, storedVal) {
+  if (storedVal === null || storedVal === undefined) return false;
+  if (metric.goal === null || metric.goal === undefined) return false;
+  return !isFail(metric, storedVal);
 }
 
 function renderCsaTable() {
@@ -793,11 +871,11 @@ function renderCsaTable() {
   const metrics = currentCsaMetricSet.metrics;
 
   const table = document.createElement("table");
-  table.className = "csa-table"; // add CSS if you want (optional)
+  table.className = "csa-table";
 
-  // Header
   const thead = document.createElement("thead");
   const hrow = document.createElement("tr");
+
   const thDate = document.createElement("th");
   thDate.textContent = "Date";
   hrow.appendChild(thDate);
@@ -816,13 +894,12 @@ function renderCsaTable() {
   const goalRow = document.createElement("tr");
   const goalLabel = document.createElement("td");
   goalLabel.textContent = "GOAL";
-  goalLabel.style.fontWeight = "700";
   goalRow.appendChild(goalLabel);
 
   for (const m of metrics) {
     const td = document.createElement("td");
-    td.style.fontWeight = "700";
-    td.textContent = (m.goal ?? "") === "" ? "" : String(m.goal);
+    td.style.fontWeight = "800";
+    td.textContent = displayGoal(m);
     goalRow.appendChild(td);
   }
   tbody.appendChild(goalRow);
@@ -841,25 +918,27 @@ function renderCsaTable() {
       const row = currentCsaValuesByDate[day] || (currentCsaValuesByDate[day] = {});
       const val = row[m.key];
 
+      // add pass/fail coloring
+      if (val !== null && val !== undefined) {
+        if (isFail(m, val)) td.classList.add("csa-fail");
+        else if (isPass(m, val)) td.classList.add("csa-pass");
+      }
+
       if (currentRole === "management") {
         const input = document.createElement("input");
         input.type = "text";
         input.className = "input";
-        input.style.minWidth = "90px";
         input.value = val === null || val === undefined ? "" : String(val);
 
         input.addEventListener("input", () => {
-          const n = toNumberOrNull(input.value.trim());
-          row[m.key] = n;
+          row[m.key] = parseInputForMetric(m, input.value);
           currentCsaDirty = true;
-          // re-render totals row quickly by just updating totals at end:
-          // simplest: full render (still fast for 7-31 rows). Keep simple.
           renderCsaTable();
         });
 
         td.appendChild(input);
       } else {
-        td.textContent = formatCell(m, val);
+        td.textContent = displayValue(m, val);
       }
 
       tr.appendChild(td);
@@ -872,16 +951,17 @@ function renderCsaTable() {
   const totalRow = document.createElement("tr");
   const totalLabel = document.createElement("td");
   totalLabel.textContent = "TOTAL";
-  totalLabel.style.fontWeight = "800";
+  totalLabel.style.fontWeight = "900";
   totalRow.appendChild(totalLabel);
 
   for (const m of metrics) {
     const td = document.createElement("td");
-    td.style.fontWeight = "800";
+    td.style.fontWeight = "900";
+
     const total = computeTotal(m, currentCsaValuesByDate);
 
     if (total === null) td.textContent = "";
-    else if (m.type === "percent") td.textContent = Number(total).toFixed(2);
+    else if (m.type === "percent") td.textContent = formatPercent(total);
     else td.textContent = String(Math.round(total * 100) / 100);
 
     totalRow.appendChild(td);
@@ -914,7 +994,12 @@ async function handleCsaLoad() {
 
     if (!r.exists) {
       setMsg(csaMsg, "No report exists for this range. Management can click Create report.", "err");
+      // still show empty rows so you can immediately Create report
+      currentCsaValuesByDate = {};
+      for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
     } else {
+      // ensure every day exists (in case range changed)
+      for (const day of currentCsaDays) currentCsaValuesByDate[day] ||= {};
       setMsg(csaMsg, "Loaded.", "ok");
     }
 
@@ -1003,8 +1088,6 @@ btnCreateTask?.addEventListener("click", async () => {
   }
 });
 
-btnRefreshHistory?.addEventListener("click", () => {});
-
 /** ---------------------------
  * Search
  * --------------------------*/
@@ -1048,6 +1131,11 @@ btnCsaCreate?.addEventListener("click", async () => {
 
     currentCsaDays = eachDayInclusive(s, e);
     await loadMetricSet(companyId);
+
+    // initialize empty rows before create
+    currentCsaValuesByDate = {};
+    for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
+
     await createReport(companyId, startStr, endStr);
   } catch (e) {
     setMsg(csaMsg, "Create failed: " + (e?.message || e), "err");
@@ -1125,22 +1213,17 @@ onAuthStateChanged(auth, async (user) => {
     userPill.textContent = `${user.email} • ${res.role}`;
     setSignedInUI(true);
 
-    // Default tab
     setTab("open");
 
-    // Tasks
     unbindTaskListeners();
     bindTaskListeners();
 
-    // Admin list
     if (res.role === "management") {
       await refreshAllowedList();
     }
 
-    // Start companies listener after role is known
-    if (tabCSA || $("panel-csa") || csaCompanySelect || companyListEl) {
-      startCompaniesListener();
-    }
+    // companies listener
+    startCompaniesListener();
   } catch (e) {
     await signOut(auth);
     setMsg(authMsg, "Sign-in blocked: " + (e?.message || e), "err");
