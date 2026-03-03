@@ -33,22 +33,8 @@ import {
 const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
 
-const fmtTime = (ts) => {
-  try {
-    const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
-    if (!d) return "";
-    return d.toLocaleString();
-  } catch { return ""; }
-};
-
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)");
-const slugifyId = (name) =>
-  (name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 
 const displayNameFromEmail = (email) => {
   const local = (email || "").split("@")[0] || "";
@@ -57,6 +43,21 @@ const displayNameFromEmail = (email) => {
     .filter(Boolean)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+};
+
+const slugifyId = (name) =>
+  (name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const fmtTime = (ts) => {
+  try {
+    const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+    if (!d) return "";
+    return d.toLocaleString();
+  } catch { return ""; }
 };
 
 function yyyyMmDd(d) {
@@ -78,22 +79,23 @@ function eachDayInclusive(start, end) {
   }
   return days;
 }
+
 function toNumberOrNull(v) {
   if (v === "" || v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-/** Percent helpers
- * - internally we store percent values as FRACTION (0.985)
- * - user can type 0.985, 98.5, 98.5%, etc.
+/** Percent helpers:
+ * store percent values as fraction (0.985).
+ * Accept user input as 0.985 OR 98.5 OR "98.5%".
  */
 function percentToFraction(v) {
   if (v === null || v === undefined) return null;
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
-  if (Math.abs(n) <= 1.5) return n;      // looks like fraction
-  return n / 100;                        // looks like percent
+  if (Math.abs(n) <= 1.5) return n;
+  return n / 100;
 }
 function formatPercentFraction(f) {
   if (f === null || f === undefined) return "";
@@ -147,13 +149,7 @@ const taskDesc = $("taskDesc");
 const taskAssignTo = $("taskAssignTo");
 const taskMsg = $("taskMsg");
 
-/** ---------------------------
- * CSA elements
- * --------------------------*/
-const csaCompanyName = $("companyName");
-const btnCompanySave = $("btnCompanyAdd");
-const companyListEl = $("companyList");
-
+/** CSA */
 const csaCompanySelect = $("csaCompanySelect");
 const csaStartDate = $("csaStartDate");
 const csaEndDate = $("csaEndDate");
@@ -163,11 +159,15 @@ const btnCsaSave = $("btnCsaSave");
 const csaMsg = $("csaMsg");
 const csaTableWrap = $("csaTableWrap");
 
+const companyName = $("companyName");
+const btnCompanyAdd = $("btnCompanyAdd");
+const companyList = $("companyList");
+
 /** ---------------------------
- * App state
+ * State
  * --------------------------*/
 let currentUser = null;
-let currentRole = null; // 'management' | 'user'
+let currentRole = null;
 
 let unsubOpen = null;
 let unsubHistory = null;
@@ -178,11 +178,13 @@ let unsubCompanies = null;
 let companiesCache = [];
 let selectedCompanyId = null;
 
-// CSA
 let currentCsaMetricSet = null;
 let currentCsaReportId = null;
-let currentCsaValuesByDate = {};  // stored normalized (percent as fraction)
+let currentCsaValuesByDate = {};
 let currentCsaDays = [];
+
+/** CSA DOM refs for totals (so we can update totals without re-rendering) */
+let csaTotalsTds = []; // index matches metric index
 
 function setMsg(el, text, kind) {
   if (!el) return;
@@ -201,8 +203,7 @@ function setRole(role) {
   show(btnNewTask, role === "management");
   show(tabAdmin, role === "management");
 
-  // CSA buttons only for management
-  show(btnCompanySave, role === "management");
+  show(btnCompanyAdd, role === "management");
   show(btnCsaCreate, role === "management");
   show(btnCsaSave, role === "management");
 }
@@ -223,31 +224,26 @@ function setTab(tab) {
 }
 
 /** ---------------------------
- * Allow-list method (unchanged)
+ * Allow-list (your method)
  * --------------------------*/
 async function requireAllowedUser(user) {
   const email = normalizeEmail(user?.email);
   if (!email) return { ok: false, reason: "Missing email on account." };
 
   const id = emailDocId(email);
-  const ref = doc(db, "allowedUsers", id);
-  const snap = await getDoc(ref);
+  const snap = await getDoc(doc(db, "allowedUsers", id));
   if (!snap.exists()) return { ok: false, reason: "This email is not allow-listed." };
 
   const d = snap.data() || {};
   const role = d.role;
-  if (role !== "management" && role !== "user") {
-    return { ok: false, reason: "Allow-list entry missing role." };
-  }
+  if (role !== "management" && role !== "user") return { ok: false, reason: "Allow-list entry missing role." };
   return { ok: true, role };
 }
 
 /** ---------------------------
  * Tabs
  * --------------------------*/
-document.querySelectorAll(".tab").forEach(btn => {
-  btn.addEventListener("click", () => setTab(btn.dataset.tab));
-});
+document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
 
 /** ---------------------------
  * Tasks
@@ -255,13 +251,7 @@ document.querySelectorAll(".tab").forEach(btn => {
 function matchesSearch(task) {
   const q = (searchInput?.value || "").trim().toLowerCase();
   if (!q) return true;
-  const hay = [
-    task.title,
-    task.desc,
-    task.createdBy,
-    task.assignedTo,
-    (task.comments || []).map(c => `${c.by} ${c.text}`).join(" ")
-  ].join(" ").toLowerCase();
+  const hay = [task.title, task.desc, task.createdBy, task.assignedTo].join(" ").toLowerCase();
   return hay.includes(q);
 }
 
@@ -313,22 +303,7 @@ function renderOpenFromCache() {
       }
     };
 
-    const btnComment = document.createElement("button");
-    btnComment.className = "btn";
-    btnComment.textContent = "Add comment";
-    btnComment.onclick = async () => {
-      const text = prompt("Comment:");
-      if (!text) return;
-      try {
-        const next = [...(t.comments || []), { by: currentUser?.email || "", text, at: new Date().toISOString() }];
-        await updateDoc(doc(db, "tasks", t.id), { comments: next });
-      } catch (e) {
-        alert("Failed: " + (e?.message || e));
-      }
-    };
-
     actions.appendChild(btnDone);
-    actions.appendChild(btnComment);
 
     if (currentRole === "management") {
       const btnDel = document.createElement("button");
@@ -336,11 +311,8 @@ function renderOpenFromCache() {
       btnDel.textContent = "Delete";
       btnDel.onclick = async () => {
         if (!confirm("Delete this task?")) return;
-        try {
-          await deleteDoc(doc(db, "tasks", t.id));
-        } catch (e) {
-          alert("Failed: " + (e?.message || e));
-        }
+        try { await deleteDoc(doc(db, "tasks", t.id)); }
+        catch (e) { alert("Failed: " + (e?.message || e)); }
       };
       actions.appendChild(btnDel);
     }
@@ -387,27 +359,26 @@ function renderHistoryFromCache() {
 }
 
 function bindTaskListeners() {
+  // safety: if already bound, unbind first
+  if (unsubOpen) unsubOpen();
+  if (unsubHistory) unsubHistory();
+
   const openQ = query(collection(db, "tasks"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(200));
   const histQ = query(collection(db, "tasks"), where("status", "==", "completed"), orderBy("completedAt", "desc"), limit(200));
 
   unsubOpen = onSnapshot(openQ, (snap) => {
     openCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderOpenFromCache();
+  }, (err) => {
+    console.error("Open tasks listener error:", err);
   });
 
   unsubHistory = onSnapshot(histQ, (snap) => {
     histCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderHistoryFromCache();
+  }, (err) => {
+    console.error("History listener error:", err);
   });
-}
-
-function unbindTaskListeners() {
-  if (unsubOpen) unsubOpen();
-  if (unsubHistory) unsubHistory();
-  unsubOpen = null;
-  unsubHistory = null;
-  openCache = [];
-  histCache = [];
 }
 
 searchInput?.addEventListener("input", () => {
@@ -416,11 +387,13 @@ searchInput?.addEventListener("input", () => {
 });
 
 /** ---------------------------
- * New task modal (minimal)
+ * Modal
  * --------------------------*/
 function openTaskModal() {
   show(backdrop, true);
   show(taskModal, true);
+  setMsg(taskMsg, "", "");
+  loadAssignableUsers().catch(() => {});
 }
 function closeTaskModal() {
   show(taskModal, false);
@@ -455,7 +428,6 @@ async function loadAssignableUsers() {
 btnCreateTask?.addEventListener("click", async () => {
   try {
     if (currentRole !== "management") return;
-
     const title = (taskTitle?.value || "").trim();
     const desc = (taskDesc?.value || "").trim();
     const assignedTo = (taskAssignTo?.value || "").trim();
@@ -479,7 +451,7 @@ btnCreateTask?.addEventListener("click", async () => {
 });
 
 /** ---------------------------
- * Admin allow-list (unchanged)
+ * Admin allow-list
  * --------------------------*/
 async function refreshAllowedList() {
   if (!allowedList) return;
@@ -535,90 +507,14 @@ btnAllowAdd?.addEventListener("click", upsertAllowed);
 btnAllowRemove?.addEventListener("click", removeAllowed);
 
 /** ---------------------------
- * CSA (companies + table)
+ * CSA
  * --------------------------*/
-function startCompaniesListener() {
-  if (unsubCompanies) return;
-  const qCompanies = query(collection(db, "companies"), orderBy("name", "asc"), limit(500));
-  unsubCompanies = onSnapshot(qCompanies, (snap) => {
-    companiesCache = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
-    renderCompaniesUI();
-  }, (err) => setMsg(csaMsg, "Companies read blocked: " + (err?.message || err), "err"));
-}
-
-function renderCompaniesUI() {
-  // list
-  if (companyListEl && currentRole === "management") {
-    companyListEl.innerHTML = "";
-    for (const c of companiesCache) {
-      const row = document.createElement("div");
-      row.className = "company-row";
-      row.textContent = c.name || c.id;
-      row.style.cursor = "pointer";
-      row.onclick = () => {
-        if (csaCompanySelect) csaCompanySelect.value = c.id;
-        selectedCompanyId = c.id;
-      };
-      companyListEl.appendChild(row);
-    }
-  }
-
-  // dropdown (active only)
-  if (csaCompanySelect) {
-    const activeCompanies = companiesCache.filter(c => c.active !== false);
-    const prev = csaCompanySelect.value;
-
-    csaCompanySelect.innerHTML = "";
-    const ph = document.createElement("option");
-    ph.value = "";
-    ph.textContent = "Select company...";
-    csaCompanySelect.appendChild(ph);
-
-    for (const c of activeCompanies) {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.textContent = c.name || c.id;
-      csaCompanySelect.appendChild(opt);
-    }
-
-    if (prev && activeCompanies.some(c => c.id === prev)) {
-      csaCompanySelect.value = prev;
-      selectedCompanyId = prev;
-    }
-  }
-}
-
-async function saveCompanyFromUI() {
-  try {
-    if (currentRole !== "management") return;
-    const name = (csaCompanyName?.value || "").trim();
-    if (!name) return setMsg(csaMsg, "Enter a company name.", "err");
-
-    const id = slugifyId(name);
-    if (!id) return setMsg(csaMsg, "Company name invalid.", "err");
-
-    await setDoc(doc(db, "companies", id), {
-      name,
-      active: true,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    await ensureDefaultMetricSet(id);
-
-    setMsg(csaMsg, `Saved company: ${id}`, "ok");
-    if (csaCompanyName) csaCompanyName.value = "";
-  } catch (e) {
-    setMsg(csaMsg, "Failed to save company: " + (e?.message || e), "err");
-  }
-}
-btnCompanySave?.addEventListener("click", saveCompanyFromUI);
-
 function defaultMetricSet() {
   const pct = (label, goalPercent) => ({
     key: label,
     label,
     type: "percent",
-    goal: goalPercent / 100, // store goal as fraction
+    goal: goalPercent / 100, // fraction
     totalMode: "avg",
     direction: "higher"
   });
@@ -643,7 +539,7 @@ function defaultMetricSet() {
       numLower("E/L", 0),
       pct("PU Prox", 2.5),
       numLower("CODE 85", 5),
-      pct("PPOD", 97.0),
+      pct("PPOD Quality", 97.0),
       pct("SIG COM", 99.2),
       pct("DOOR TAG", 90.0)
     ]
@@ -668,41 +564,39 @@ async function loadMetricSet(companyId) {
   const snap = await getDoc(ref);
   currentCsaMetricSet = snap.exists() ? snap.data() : await ensureDefaultMetricSet(companyId);
 
-  // normalize any percent goals if older docs stored 98.5 instead of 0.985
-  if (currentCsaMetricSet?.metrics) {
-    for (const m of currentCsaMetricSet.metrics) {
-      if (m.type === "percent") m.goal = percentToFraction(m.goal);
-    }
+  // normalize percent goals
+  for (const m of (currentCsaMetricSet.metrics || [])) {
+    if (m.type === "percent") m.goal = percentToFraction(m.goal);
   }
 }
 
 async function loadReport(companyId, startStr, endStr) {
   const id = reportDocId(companyId, startStr, endStr);
+  currentCsaReportId = id;
+
   const ref = doc(db, "csaReports", id);
   const snap = await getDoc(ref);
 
-  currentCsaReportId = id;
+  currentCsaValuesByDate = {};
+  for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
 
-  if (!snap.exists()) {
-    currentCsaValuesByDate = {};
-    for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
-    return false;
-  }
+  if (!snap.exists()) return false;
 
   const data = snap.data() || {};
-  currentCsaValuesByDate = data.valuesByDate || {};
-  // ensure all days exist
-  for (const day of currentCsaDays) currentCsaValuesByDate[day] ||= {};
-  // normalize percent values if old data stored 98.5
-  if (currentCsaMetricSet?.metrics) {
-    const percentKeys = new Set(currentCsaMetricSet.metrics.filter(m => m.type === "percent").map(m => m.key));
-    for (const day of currentCsaDays) {
-      const row = currentCsaValuesByDate[day] || {};
-      for (const k of percentKeys) {
-        if (row[k] !== null && row[k] !== undefined) row[k] = percentToFraction(row[k]);
-      }
+  const incoming = data.valuesByDate || {};
+  for (const day of currentCsaDays) {
+    currentCsaValuesByDate[day] = incoming[day] || {};
+  }
+
+  // normalize percent values
+  const percentKeys = new Set((currentCsaMetricSet.metrics || []).filter(m => m.type === "percent").map(m => m.key));
+  for (const day of currentCsaDays) {
+    const row = currentCsaValuesByDate[day] || {};
+    for (const k of percentKeys) {
+      if (row[k] !== null && row[k] !== undefined) row[k] = percentToFraction(row[k]);
     }
   }
+
   return true;
 }
 
@@ -710,12 +604,12 @@ async function createReport(companyId, startStr, endStr) {
   if (currentRole !== "management") return;
 
   const id = reportDocId(companyId, startStr, endStr);
-  const ref = doc(db, "csaReports", id);
+  currentCsaReportId = id;
 
   const valuesByDate = {};
   for (const day of currentCsaDays) valuesByDate[day] = {};
 
-  await setDoc(ref, {
+  await setDoc(doc(db, "csaReports", id), {
     companyId,
     startDate: startStr,
     endDate: endStr,
@@ -726,9 +620,7 @@ async function createReport(companyId, startStr, endStr) {
     updatedBy: currentUser?.email || ""
   }, { merge: true });
 
-  currentCsaReportId = id;
   currentCsaValuesByDate = valuesByDate;
-
   setMsg(csaMsg, "Report created. Enter values and click Save.", "ok");
   renderCsaTable();
 }
@@ -737,8 +629,7 @@ async function saveReport(companyId, startStr, endStr) {
   if (currentRole !== "management") return;
   if (!currentCsaReportId) return setMsg(csaMsg, "No report loaded.", "err");
 
-  const ref = doc(db, "csaReports", currentCsaReportId);
-  await setDoc(ref, {
+  await setDoc(doc(db, "csaReports", currentCsaReportId), {
     companyId,
     startDate: startStr,
     endDate: endStr,
@@ -784,13 +675,7 @@ function computeTotal(metric) {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-function formatDisplay(metric, storedVal) {
-  if (storedVal === null || storedVal === undefined) return "";
-  if (metric.type === "percent") return formatPercentFraction(percentToFraction(storedVal));
-  return String(storedVal);
-}
-
-function parseInput(metric, raw) {
+function parseCellInput(metric, raw) {
   const t = (raw || "").trim();
   if (!t) return null;
   const cleaned = t.replace("%", "").trim();
@@ -799,9 +684,30 @@ function parseInput(metric, raw) {
   return metric.type === "percent" ? percentToFraction(n) : n;
 }
 
+function setCellFailStyle(td, isFailNow) {
+  td.classList.toggle("csa-fail", !!isFailNow);
+  td.classList.toggle("csa-pass", !isFailNow && td.dataset.hasvalue === "1");
+}
+
+function recomputeTotalsRow() {
+  if (!currentCsaMetricSet?.metrics?.length) return;
+  const metrics = currentCsaMetricSet.metrics;
+
+  for (let i = 0; i < metrics.length; i++) {
+    const m = metrics[i];
+    const td = csaTotalsTds[i];
+    if (!td) continue;
+
+    const total = computeTotal(m);
+    if (total === null) td.textContent = "";
+    else td.textContent = (m.type === "percent") ? formatPercentFraction(total) : String(Math.round(total * 100) / 100);
+  }
+}
+
 function renderCsaTable() {
   if (!csaTableWrap) return;
   csaTableWrap.innerHTML = "";
+  csaTotalsTds = [];
 
   const metrics = currentCsaMetricSet?.metrics || [];
   if (!metrics.length || !currentCsaDays.length) return;
@@ -815,6 +721,7 @@ function renderCsaTable() {
   const th0 = document.createElement("th");
   th0.textContent = "Date";
   hr.appendChild(th0);
+
   for (const m of metrics) {
     const th = document.createElement("th");
     th.textContent = m.label;
@@ -830,6 +737,7 @@ function renderCsaTable() {
   const g0 = document.createElement("td");
   g0.textContent = "GOAL";
   gr.appendChild(g0);
+
   for (const m of metrics) {
     const td = document.createElement("td");
     td.style.fontWeight = "800";
@@ -847,49 +755,72 @@ function renderCsaTable() {
 
     const row = currentCsaValuesByDate[day] || (currentCsaValuesByDate[day] = {});
 
-    for (const m of metrics) {
+    metrics.forEach((m, idx) => {
       const td = document.createElement("td");
       const val = row[m.key];
 
-      // apply fail style on render
-      if (isFail(m, val)) td.classList.add("csa-fail");
+      td.dataset.day = day;
+      td.dataset.key = m.key;
+
+      const hasValue = (val !== null && val !== undefined);
+      td.dataset.hasvalue = hasValue ? "1" : "0";
+
+      setCellFailStyle(td, isFail(m, val));
 
       if (currentRole === "management") {
         const input = document.createElement("input");
         input.type = "text";
         input.className = "input";
-        input.value = val === null || val === undefined ? "" : (m.type === "percent" ? formatPercentFraction(val) : String(val));
+        input.inputMode = "decimal"; // helps mobile keyboards; doesn't block "."
+        input.autocomplete = "off";
+        input.spellcheck = false;
 
-        // IMPORTANT: do NOT re-render on every keystroke
+        // show formatted value initially (but DO NOT reformat while typing)
+        if (!hasValue) input.value = "";
+        else input.value = (m.type === "percent") ? formatPercentFraction(val) : String(val);
+
+        // let the user type anything; no parsing here
         input.addEventListener("input", () => {
-          // allow any typing; don't parse yet
-          td.classList.remove("csa-fail");
+          td.classList.remove("csa-fail", "csa-pass");
+          td.dataset.hasvalue = input.value.trim() ? "1" : "0";
         });
 
-        // parse and apply styles ONLY when you leave the field
+        // Enter commits (no extra click)
+        input.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            input.blur();
+          }
+        });
+
+        // commit on blur
         input.addEventListener("blur", () => {
-          const parsed = parseInput(m, input.value);
+          const parsed = parseCellInput(m, input.value);
           row[m.key] = parsed;
 
-          // rewrite to a clean display format
-          input.value = parsed === null ? "" : (m.type === "percent" ? formatPercentFraction(parsed) : String(parsed));
+          // snap display to formatted
+          if (parsed === null) input.value = "";
+          else input.value = (m.type === "percent") ? formatPercentFraction(parsed) : String(parsed);
 
-          // re-render ONCE after edit (keeps typing smooth)
-          renderCsaTable();
+          td.dataset.hasvalue = parsed === null ? "0" : "1";
+          setCellFailStyle(td, isFail(m, parsed));
+          recomputeTotalsRow();
         });
 
         td.appendChild(input);
       } else {
-        td.textContent = formatDisplay(m, val);
+        td.textContent = hasValue
+          ? (m.type === "percent" ? formatPercentFraction(percentToFraction(val)) : String(val))
+          : "";
       }
 
       tr.appendChild(td);
-    }
+    });
 
     tbody.appendChild(tr);
   }
 
-  // totals
+  // totals row
   const trT = document.createElement("tr");
   const tdT0 = document.createElement("td");
   tdT0.textContent = "TOTAL";
@@ -899,14 +830,17 @@ function renderCsaTable() {
   for (const m of metrics) {
     const td = document.createElement("td");
     td.style.fontWeight = "900";
-    const total = computeTotal(m);
-    td.textContent = total === null ? "" : (m.type === "percent" ? formatPercentFraction(total) : String(Math.round(total * 100) / 100));
+    csaTotalsTds.push(td);
     trT.appendChild(td);
   }
+
   tbody.appendChild(trT);
 
   table.appendChild(tbody);
   csaTableWrap.appendChild(table);
+
+  // fill totals once after render
+  recomputeTotalsRow();
 }
 
 async function handleCsaLoad() {
@@ -929,11 +863,14 @@ async function handleCsaLoad() {
     await loadMetricSet(companyId);
     const exists = await loadReport(companyId, startStr, endStr);
 
-    if (!exists) setMsg(csaMsg, "No report exists for this range. Management can click Create report.", "err");
-    else setMsg(csaMsg, "Loaded.", "ok");
+    setMsg(csaMsg,
+      exists ? "Loaded." : "No report exists for this range. Management can click Create report.",
+      exists ? "ok" : "err"
+    );
 
     renderCsaTable();
   } catch (e) {
+    console.error(e);
     setMsg(csaMsg, "Load failed: " + (e?.message || e), "err");
   }
 }
@@ -943,6 +880,7 @@ btnCsaLoad?.addEventListener("click", handleCsaLoad);
 btnCsaCreate?.addEventListener("click", async () => {
   try {
     if (currentRole !== "management") return;
+
     const companyId = csaCompanySelect?.value || selectedCompanyId;
     if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
 
@@ -958,6 +896,7 @@ btnCsaCreate?.addEventListener("click", async () => {
     await loadMetricSet(companyId);
     await createReport(companyId, startStr, endStr);
   } catch (e) {
+    console.error(e);
     setMsg(csaMsg, "Create failed: " + (e?.message || e), "err");
   }
 });
@@ -965,6 +904,7 @@ btnCsaCreate?.addEventListener("click", async () => {
 btnCsaSave?.addEventListener("click", async () => {
   try {
     if (currentRole !== "management") return;
+
     const companyId = csaCompanySelect?.value || selectedCompanyId;
     if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
 
@@ -975,7 +915,86 @@ btnCsaSave?.addEventListener("click", async () => {
 
     await saveReport(companyId, yyyyMmDd(s), yyyyMmDd(e));
   } catch (e) {
+    console.error(e);
     setMsg(csaMsg, "Save failed: " + (e?.message || e), "err");
+  }
+});
+
+/** Companies */
+function startCompaniesListener() {
+  if (unsubCompanies) return;
+  const qCompanies = query(collection(db, "companies"), orderBy("name", "asc"), limit(500));
+  unsubCompanies = onSnapshot(qCompanies, (snap) => {
+    companiesCache = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+    renderCompaniesUI();
+  }, (err) => {
+    console.error("Companies listener error:", err);
+    setMsg(csaMsg, "Companies read blocked: " + (err?.message || err), "err");
+  });
+}
+
+function renderCompaniesUI() {
+  // dropdown active
+  if (csaCompanySelect) {
+    const active = companiesCache.filter(c => c.active !== false);
+    const prev = csaCompanySelect.value;
+    csaCompanySelect.innerHTML = "";
+
+    const ph = document.createElement("option");
+    ph.value = "";
+    ph.textContent = "Select company...";
+    csaCompanySelect.appendChild(ph);
+
+    for (const c of active) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name || c.id;
+      csaCompanySelect.appendChild(opt);
+    }
+
+    if (prev && active.some(c => c.id === prev)) csaCompanySelect.value = prev;
+    if (!selectedCompanyId) selectedCompanyId = csaCompanySelect.value || null;
+  }
+
+  // list management only
+  if (companyList) {
+    companyList.innerHTML = "";
+    if (currentRole === "management") {
+      for (const c of companiesCache) {
+        const row = document.createElement("div");
+        row.className = "company-row";
+        row.textContent = c.name || c.id;
+        row.onclick = () => {
+          csaCompanySelect.value = c.id;
+          selectedCompanyId = c.id;
+        };
+        companyList.appendChild(row);
+      }
+    }
+  }
+}
+
+btnCompanyAdd?.addEventListener("click", async () => {
+  try {
+    if (currentRole !== "management") return;
+    const name = (companyName?.value || "").trim();
+    if (!name) return setMsg(csaMsg, "Enter a company name.", "err");
+
+    const id = slugifyId(name);
+    if (!id) return setMsg(csaMsg, "Company name invalid.", "err");
+
+    await setDoc(doc(db, "companies", id), {
+      name,
+      active: true,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    await ensureDefaultMetricSet(id);
+    setMsg(csaMsg, `Saved company: ${id}`, "ok");
+    if (companyName) companyName.value = "";
+  } catch (e) {
+    console.error(e);
+    setMsg(csaMsg, "Failed to save company: " + (e?.message || e), "err");
   }
 });
 
@@ -1006,6 +1025,7 @@ btnSendLink?.addEventListener("click", async () => {
   try {
     const email = normalizeEmail(authEmail?.value);
     if (!email) return setMsg(authMsg, "Enter email first.", "err");
+
     const actionCodeSettings = { url: window.location.href.split("#")[0], handleCodeInApp: true };
     await sendSignInLinkToEmail(auth, email, actionCodeSettings);
     window.localStorage.setItem("emailForSignIn", email);
@@ -1045,7 +1065,6 @@ onAuthStateChanged(auth, async (user) => {
     currentRole = null;
     userPill.textContent = "";
     setSignedInUI(false);
-    unbindTaskListeners();
     return;
   }
 
@@ -1062,11 +1081,9 @@ onAuthStateChanged(auth, async (user) => {
     userPill.textContent = `${user.email} • ${res.role}`;
     setSignedInUI(true);
 
-    // Default tab open
     setTab("open");
 
     // tasks
-    unbindTaskListeners();
     bindTaskListeners();
 
     // admin list
@@ -1075,9 +1092,10 @@ onAuthStateChanged(auth, async (user) => {
       await loadAssignableUsers();
     }
 
-    // CSA
+    // companies
     startCompaniesListener();
   } catch (e) {
+    console.error(e);
     await signOut(auth);
     setMsg(authMsg, "Sign-in blocked: " + (e?.message || e), "err");
   }
