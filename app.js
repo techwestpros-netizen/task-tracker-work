@@ -80,6 +80,7 @@ function eachDayInclusive(start, end) {
     days.push(yyyyMmDd(d));
   }
   return days;
+}
 
 
 // CSA Daily storage: one doc per company per day
@@ -118,7 +119,6 @@ async function saveDailyValues(companyId, days, valuesByDate) {
   }
 }
 
-}
 function toNumberOrNull(v) {
   if (v === "" || v === null || v === undefined) return null;
   const n = Number(v);
@@ -465,7 +465,6 @@ function renderTaskCard(t, isHistory) {
     desc.className = "task-desc";
     desc.textContent = descText;
     card.appendChild(desc);
-  }
 
   // Comments (newest first)
   const commentsArr = Array.isArray(t.comments) ? t.comments.slice() : [];
@@ -499,6 +498,8 @@ function renderTaskCard(t, isHistory) {
     }
 
     card.appendChild(commentsWrap);
+  }
+
   }
 
   // Actions for open tasks
