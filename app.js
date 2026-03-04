@@ -35,8 +35,7 @@ const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
-const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)");
-
+const emailDocId = (email) => normalizeEmail(email);
 const displayNameFromEmail = (email) => {
   const local = (email || "").split("@")[0] || "";
   return local
@@ -62,11 +61,6 @@ const fmtTime = (ts) => {
     return "";
   }
 };
-
-function emailDocId(email) {
-  // Use the raw email as the document ID (Firestore doc IDs can contain '.' and '@').
-  return String(email || "").trim().toLowerCase();
-}
 
 function yyyyMmDd(d) {
   const pad = (n) => String(n).padStart(2, "0");
