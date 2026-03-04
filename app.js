@@ -35,7 +35,8 @@ const $ = (id) => document.getElementById(id);
 const show = (el, yes) => { if (el) el.classList.toggle("hidden", !yes); };
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
-const emailDocId = (email) => normalizeEmail(email);
+const emailDocId = (email) => normalizeEmail(email).replaceAll(".", "(dot)");
+
 const displayNameFromEmail = (email) => {
   const local = (email || "").split("@")[0] || "";
   return local
@@ -428,40 +429,6 @@ function renderTaskCard(t, isHistory) {
     card.appendChild(desc);
   }
 
-  // Comments (show for both Open and History)
-  const commentsArr = Array.isArray(t.comments) ? t.comments : [];
-  if (commentsArr.length) {
-    const wrap = document.createElement("div");
-    wrap.className = "comments";
-
-    // oldest -> newest
-    const sorted = [...commentsArr].sort((a, b) => {
-      const ta = a?.at ? new Date(a.at).getTime() : 0;
-      const tb = b?.at ? new Date(b.at).getTime() : 0;
-      return ta - tb;
-    });
-
-    for (const c of sorted) {
-      const row = document.createElement("div");
-      row.className = "comment";
-
-      const who = document.createElement("div");
-      who.className = "who";
-      const when = c?.at ? new Date(c.at).toLocaleString() : "";
-      who.textContent = `${c?.by || ""}${when ? ` • ${when}` : ""}`;
-
-      const txt = document.createElement("div");
-      txt.className = "txt";
-      txt.textContent = (c?.text || "").toString();
-
-      row.appendChild(who);
-      row.appendChild(txt);
-      wrap.appendChild(row);
-    }
-
-    card.appendChild(wrap);
-  }
-
   // Actions for open tasks
   if (!isHistory) {
     const actions = document.createElement("div");
@@ -830,30 +797,54 @@ async function loadMetricSet(companyId) {
 }
 
 function reportDocId(companyId, startStr, endStr) {
+  // Legacy range-id (still used for optional snapshots)
   return `${companyId}__${startStr}__${endStr}`;
 }
 
+/**
+ * DAILY-BASED CSA STORAGE
+ * - Each day is stored in /csaDaily/{companyId}__{YYYY-MM-DD}
+ * - Loading any date range pulls each day's saved values so expanding the range won't "wipe" prior entries.
+ *
+ * Returns: { foundAny: boolean }
+ */
 async function loadReport(companyId, startStr, endStr) {
   const id = reportDocId(companyId, startStr, endStr);
   currentCsaReportId = id;
 
-  const ref = doc(db, "csaReports", id);
-  const snap = await getDoc(ref);
-
-  // initialize empty
+  // initialize empty for the currently selected days
   currentCsaValuesByDate = {};
   for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
 
-  if (!snap.exists()) return false;
+  let foundAny = false;
 
-  const data = snap.data() || {};
-  const incoming = data.valuesByDate || {};
-
+  // 1) Load per-day docs (preferred behavior)
   for (const day of currentCsaDays) {
-    currentCsaValuesByDate[day] = incoming[day] || {};
+    const dailyId = `${companyId}__${day}`;
+    const snap = await getDoc(doc(db, "csaDaily", dailyId));
+    if (!snap.exists()) continue;
+
+    const data = snap.data() || {};
+    const incoming = (data.metrics || data.values || {}) || {};
+    currentCsaValuesByDate[day] = incoming;
+    foundAny = true;
   }
 
-  // normalize percent values in report
+  // 2) Legacy fallback: if nothing found in csaDaily, try the old range snapshot doc
+  if (!foundAny) {
+    const ref = doc(db, "csaReports", id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      const incoming = data.valuesByDate || {};
+      for (const day of currentCsaDays) {
+        currentCsaValuesByDate[day] = incoming[day] || {};
+      }
+      foundAny = true;
+    }
+  }
+
+  // normalize percent values
   const pctKeys = new Set((currentCsaMetricSet.metrics || []).filter(m => m.type === "percent").map(m => m.key));
   for (const day of currentCsaDays) {
     const row = currentCsaValuesByDate[day] || {};
@@ -862,39 +853,43 @@ async function loadReport(companyId, startStr, endStr) {
     }
   }
 
-  return true;
+  return { foundAny };
 }
 
 async function createReport(companyId, startStr, endStr) {
+  // With daily storage, a "report" doesn't need to be created.
+  // We'll just initialize the table for the chosen days.
   if (currentRole !== "management") return;
 
-  const id = reportDocId(companyId, startStr, endStr);
-  currentCsaReportId = id;
+  currentCsaReportId = reportDocId(companyId, startStr, endStr);
 
   const valuesByDate = {};
   for (const day of currentCsaDays) valuesByDate[day] = {};
-
-  await setDoc(doc(db, "csaReports", id), {
-    companyId,
-    startDate: startStr,
-    endDate: endStr,
-    valuesByDate,
-    createdAt: serverTimestamp(),
-    createdBy: currentUser?.email || "",
-    updatedAt: serverTimestamp(),
-    updatedBy: currentUser?.email || ""
-  }, { merge: true });
-
   currentCsaValuesByDate = valuesByDate;
-  setMsg(csaMsg, "Report created. Enter values and click Save.", "ok");
+
+  setMsg(csaMsg, "Ready. Enter values and click Save.", "ok");
   renderCsaTable();
 }
 
 async function saveReport(companyId, startStr, endStr) {
   if (currentRole !== "management") return;
-  if (!currentCsaReportId) return setMsg(csaMsg, "No report loaded.", "err");
 
-  await setDoc(doc(db, "csaReports", currentCsaReportId), {
+  // Save each day into csaDaily so expanding the range will always load prior values.
+  for (const day of currentCsaDays) {
+    const dailyId = `${companyId}__${day}`;
+    const metrics = currentCsaValuesByDate?.[day] || {};
+    await setDoc(doc(db, "csaDaily", dailyId), {
+      companyId,
+      date: day,
+      metrics,
+      updatedAt: serverTimestamp(),
+      updatedBy: currentUser?.email || ""
+    }, { merge: true });
+  }
+
+  // Optional: also keep a snapshot of the selected range (legacy support / easy export)
+  const snapId = reportDocId(companyId, startStr, endStr);
+  await setDoc(doc(db, "csaReports", snapId), {
     companyId,
     startDate: startStr,
     endDate: endStr,
@@ -903,8 +898,10 @@ async function saveReport(companyId, startStr, endStr) {
     updatedBy: currentUser?.email || ""
   }, { merge: true });
 
+  currentCsaReportId = snapId;
   setMsg(csaMsg, "Saved.", "ok");
 }
+
 
 function isFail(metric, val) {
   if (val === null || val === undefined) return false;
@@ -1237,16 +1234,30 @@ btnCsaLoad?.addEventListener("click", async () => {
     const startStr = yyyyMmDd(s);
     const endStr = yyyyMmDd(e);
 
+    // UX: If a report doesn't exist for the selected range, don't wipe the currently
+    // visible table. Keep showing the last loaded report so the user's info doesn't
+    // appear to "vanish" just because they changed the date.
+    const prevCompanyId = selectedCompanyId;
+    const prevDays = Array.isArray(currentCsaDays) ? [...currentCsaDays] : [];
+    const prevValues = currentCsaValuesByDate ? JSON.parse(JSON.stringify(currentCsaValuesByDate)) : {};
+    const prevReportId = currentCsaReportId;
+
+    const nextDays = eachDayInclusive(s, e);
+
     selectedCompanyId = companyId;
-    currentCsaDays = eachDayInclusive(s, e);
+    currentCsaDays = nextDays;
 
     await loadMetricSet(companyId);
-    const exists = await loadReport(companyId, startStr, endStr);
+    const { foundAny } = await loadReport(companyId, startStr, endStr);
 
-    setMsg(csaMsg, exists ? "Loaded." : "No report exists for this range. Click Create report (management).", exists ? "ok" : "err");
+    if (foundAny) {
+      setMsg(csaMsg, "Loaded. (Days with no saved data are blank.)", "ok");
+    } else {
+      setMsg(csaMsg, "Loaded. No saved data for this range yet — enter values and click Save.", "err");
+    }
 
     renderCsaTable();
-  } catch (e) {
+} catch (e) {
     console.error(e);
     setMsg(csaMsg, "Load failed: " + (e?.message || e), "err");
   }
