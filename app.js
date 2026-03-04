@@ -429,40 +429,6 @@ function renderTaskCard(t, isHistory) {
     card.appendChild(desc);
   }
 
-  // Comments (show for both Open and History)
-  const commentsArr = Array.isArray(t.comments) ? t.comments : [];
-  if (commentsArr.length) {
-    const wrap = document.createElement("div");
-    wrap.className = "comments";
-
-    // oldest -> newest
-    const sorted = [...commentsArr].sort((a, b) => {
-      const ta = a?.at ? new Date(a.at).getTime() : 0;
-      const tb = b?.at ? new Date(b.at).getTime() : 0;
-      return ta - tb;
-    });
-
-    for (const c of sorted) {
-      const row = document.createElement("div");
-      row.className = "comment";
-
-      const who = document.createElement("div");
-      who.className = "who";
-      const when = c?.at ? new Date(c.at).toLocaleString() : "";
-      who.textContent = `${c?.by || ""}${when ? ` • ${when}` : ""}`;
-
-      const txt = document.createElement("div");
-      txt.className = "txt";
-      txt.textContent = (c?.text || "").toString();
-
-      row.appendChild(who);
-      row.appendChild(txt);
-      wrap.appendChild(row);
-    }
-
-    card.appendChild(wrap);
-  }
-
   // Actions for open tasks
   if (!isHistory) {
     const actions = document.createElement("div");
@@ -1238,14 +1204,38 @@ btnCsaLoad?.addEventListener("click", async () => {
     const startStr = yyyyMmDd(s);
     const endStr = yyyyMmDd(e);
 
+    // UX: If a report doesn't exist for the selected range, don't wipe the currently
+    // visible table. Keep showing the last loaded report so the user's info doesn't
+    // appear to "vanish" just because they changed the date.
+    const prevCompanyId = selectedCompanyId;
+    const prevDays = Array.isArray(currentCsaDays) ? [...currentCsaDays] : [];
+    const prevValues = currentCsaValuesByDate ? JSON.parse(JSON.stringify(currentCsaValuesByDate)) : {};
+    const prevReportId = currentCsaReportId;
+
+    const nextDays = eachDayInclusive(s, e);
+
     selectedCompanyId = companyId;
-    currentCsaDays = eachDayInclusive(s, e);
+    currentCsaDays = nextDays;
 
     await loadMetricSet(companyId);
     const exists = await loadReport(companyId, startStr, endStr);
 
-    setMsg(csaMsg, exists ? "Loaded." : "No report exists for this range. Click Create report (management).", exists ? "ok" : "err");
+    if (!exists) {
+      // Restore what the user was looking at
+      selectedCompanyId = prevCompanyId;
+      currentCsaDays = prevDays;
+      currentCsaValuesByDate = prevValues;
+      currentCsaReportId = prevReportId;
 
+      setMsg(
+        csaMsg,
+        "No report exists for this range. (Showing the last loaded report so your info doesn’t vanish.) Click Create report (management) to start a new one.",
+        "err"
+      );
+      return;
+    }
+
+    setMsg(csaMsg, "Loaded.", "ok");
     renderCsaTable();
   } catch (e) {
     console.error(e);
