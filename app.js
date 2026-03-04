@@ -80,7 +80,6 @@ function eachDayInclusive(start, end) {
     days.push(yyyyMmDd(d));
   }
   return days;
-}
 
 
 // CSA Daily storage: one doc per company per day
@@ -119,6 +118,7 @@ async function saveDailyValues(companyId, days, valuesByDate) {
   }
 }
 
+}
 function toNumberOrNull(v) {
   if (v === "" || v === null || v === undefined) return null;
   const n = Number(v);
@@ -465,6 +465,40 @@ function renderTaskCard(t, isHistory) {
     desc.className = "task-desc";
     desc.textContent = descText;
     card.appendChild(desc);
+  }
+
+  // Comments (newest first)
+  const commentsArr = Array.isArray(t.comments) ? t.comments.slice() : [];
+  if (commentsArr.length) {
+    commentsArr.sort((a, b) => {
+      const ta = a?.at ? new Date(a.at).getTime() : 0;
+      const tb = b?.at ? new Date(b.at).getTime() : 0;
+      return tb - ta;
+    });
+
+    const commentsWrap = document.createElement("div");
+    commentsWrap.className = "comments";
+
+    for (const c of commentsArr) {
+      const row = document.createElement("div");
+      row.className = "comment";
+
+      const who = document.createElement("div");
+      who.className = "who";
+      const by = (c?.by || "").trim();
+      const when = c?.at ? new Date(c.at).toLocaleString() : "";
+      who.textContent = `${by}${by && when ? " • " : ""}${when}`;
+
+      const txt = document.createElement("div");
+      txt.className = "txt";
+      txt.textContent = (c?.text || "").trim();
+
+      row.appendChild(who);
+      row.appendChild(txt);
+      commentsWrap.appendChild(row);
+    }
+
+    card.appendChild(commentsWrap);
   }
 
   // Actions for open tasks
