@@ -429,6 +429,40 @@ function renderTaskCard(t, isHistory) {
     card.appendChild(desc);
   }
 
+  // Comments (show for both Open and History)
+  const commentsArr = Array.isArray(t.comments) ? t.comments : [];
+  if (commentsArr.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "comments";
+
+    // oldest -> newest
+    const sorted = [...commentsArr].sort((a, b) => {
+      const ta = a?.at ? new Date(a.at).getTime() : 0;
+      const tb = b?.at ? new Date(b.at).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const c of sorted) {
+      const row = document.createElement("div");
+      row.className = "comment";
+
+      const who = document.createElement("div");
+      who.className = "who";
+      const when = c?.at ? new Date(c.at).toLocaleString() : "";
+      who.textContent = `${c?.by || ""}${when ? ` • ${when}` : ""}`;
+
+      const txt = document.createElement("div");
+      txt.className = "txt";
+      txt.textContent = (c?.text || "").toString();
+
+      row.appendChild(who);
+      row.appendChild(txt);
+      wrap.appendChild(row);
+    }
+
+    card.appendChild(wrap);
+  }
+
   // Actions for open tasks
   if (!isHistory) {
     const actions = document.createElement("div");
