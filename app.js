@@ -63,6 +63,11 @@ const fmtTime = (ts) => {
   }
 };
 
+function emailDocId(email) {
+  // Use the raw email as the document ID (Firestore doc IDs can contain '.' and '@').
+  return String(email || "").trim().toLowerCase();
+}
+
 function yyyyMmDd(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
