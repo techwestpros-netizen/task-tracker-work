@@ -429,6 +429,40 @@ function renderTaskCard(t, isHistory) {
     card.appendChild(desc);
   }
 
+  // Comments (show for both Open and History)
+  const commentsArr = Array.isArray(t.comments) ? t.comments : [];
+  if (commentsArr.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "comments";
+
+    // oldest -> newest
+    const sorted = [...commentsArr].sort((a, b) => {
+      const ta = a?.at ? new Date(a.at).getTime() : 0;
+      const tb = b?.at ? new Date(b.at).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const c of sorted) {
+      const row = document.createElement("div");
+      row.className = "comment";
+
+      const who = document.createElement("div");
+      who.className = "who";
+      const when = c?.at ? new Date(c.at).toLocaleString() : "";
+      who.textContent = `${c?.by || ""}${when ? ` • ${when}` : ""}`;
+
+      const txt = document.createElement("div");
+      txt.className = "txt";
+      txt.textContent = (c?.text || "").toString();
+
+      row.appendChild(who);
+      row.appendChild(txt);
+      wrap.appendChild(row);
+    }
+
+    card.appendChild(wrap);
+  }
+
   // Actions for open tasks
   if (!isHistory) {
     const actions = document.createElement("div");
@@ -796,74 +830,82 @@ async function loadMetricSet(companyId) {
   }
 }
 
-function csaDailyDocId(companyId, dayStr) {
-  return `${companyId}__${dayStr}`;
+function reportDocId(companyId, startStr, endStr) {
+  return `${companyId}__${startStr}__${endStr}`;
 }
 
-async function loadDaily(companyId) {
-  // Initialize empty rows for all days
+async function loadReport(companyId, startStr, endStr) {
+  const id = reportDocId(companyId, startStr, endStr);
+  currentCsaReportId = id;
+
+  const ref = doc(db, "csaReports", id);
+  const snap = await getDoc(ref);
+
+  // initialize empty
   currentCsaValuesByDate = {};
   for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
 
-  const pctKeys = new Set((currentCsaMetricSet?.metrics || []).filter(m => m.type === "percent").map(m => m.key));
+  if (!snap.exists()) return false;
+
+  const data = snap.data() || {};
+  const incoming = data.valuesByDate || {};
 
   for (const day of currentCsaDays) {
-    const id = csaDailyDocId(companyId, day);
-    const snap = await getDoc(doc(db, "csaDaily", id));
-    if (!snap.exists()) continue;
+    currentCsaValuesByDate[day] = incoming[day] || {};
+  }
 
-    const data = snap.data() || {};
-    const row = (data.metrics && typeof data.metrics === "object") ? data.metrics : {};
-
-    // normalize percent values as fraction
+  // normalize percent values in report
+  const pctKeys = new Set((currentCsaMetricSet.metrics || []).filter(m => m.type === "percent").map(m => m.key));
+  for (const day of currentCsaDays) {
+    const row = currentCsaValuesByDate[day] || {};
     for (const k of pctKeys) {
       if (row[k] !== null && row[k] !== undefined) row[k] = percentToFraction(row[k]);
     }
-
-    currentCsaValuesByDate[day] = row;
   }
+
+  return true;
 }
 
-async function createDailyStubsIfMissing(companyId) {
+async function createReport(companyId, startStr, endStr) {
   if (currentRole !== "management") return;
 
-  // Create empty docs only if they don't exist yet (does NOT overwrite existing metrics)
-  for (const day of currentCsaDays) {
-    const id = csaDailyDocId(companyId, day);
-    const ref = doc(db, "csaDaily", id);
-    const snap = await getDoc(ref);
-    if (snap.exists()) continue;
+  const id = reportDocId(companyId, startStr, endStr);
+  currentCsaReportId = id;
 
-    await setDoc(ref, {
-      companyId,
-      date: day,
-      metrics: {},
-      createdAt: serverTimestamp(),
-      createdBy: currentUser?.email || "",
-      updatedAt: serverTimestamp(),
-      updatedBy: currentUser?.email || ""
-    }, { merge: true });
-  }
+  const valuesByDate = {};
+  for (const day of currentCsaDays) valuesByDate[day] = {};
+
+  await setDoc(doc(db, "csaReports", id), {
+    companyId,
+    startDate: startStr,
+    endDate: endStr,
+    valuesByDate,
+    createdAt: serverTimestamp(),
+    createdBy: currentUser?.email || "",
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUser?.email || ""
+  }, { merge: true });
+
+  currentCsaValuesByDate = valuesByDate;
+  setMsg(csaMsg, "Report created. Enter values and click Save.", "ok");
+  renderCsaTable();
 }
 
-async function saveDaily(companyId) {
+async function saveReport(companyId, startStr, endStr) {
   if (currentRole !== "management") return;
+  if (!currentCsaReportId) return setMsg(csaMsg, "No report loaded.", "err");
 
-  for (const day of currentCsaDays) {
-    const id = csaDailyDocId(companyId, day);
-    const row = currentCsaValuesByDate[day] || {};
-    await setDoc(doc(db, "csaDaily", id), {
-      companyId,
-      date: day,
-      metrics: row,
-      updatedAt: serverTimestamp(),
-      updatedBy: currentUser?.email || ""
-    }, { merge: true });
-  }
+  await setDoc(doc(db, "csaReports", currentCsaReportId), {
+    companyId,
+    startDate: startStr,
+    endDate: endStr,
+    valuesByDate: currentCsaValuesByDate,
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUser?.email || ""
+  }, { merge: true });
 
   setMsg(csaMsg, "Saved.", "ok");
 }
-
 
 function isFail(metric, val) {
   if (val === null || val === undefined) return false;
@@ -1185,7 +1227,6 @@ btnCompanyAdd?.addEventListener("click", async () => {
 btnCsaLoad?.addEventListener("click", async () => {
   try {
     setMsg(csaMsg, "", "");
-
     const companyId = csaCompanySelect?.value || selectedCompanyId;
     if (!companyId) return setMsg(csaMsg, "Select a company.", "err");
 
@@ -1194,13 +1235,17 @@ btnCsaLoad?.addEventListener("click", async () => {
     if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
     if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
 
+    const startStr = yyyyMmDd(s);
+    const endStr = yyyyMmDd(e);
+
     selectedCompanyId = companyId;
     currentCsaDays = eachDayInclusive(s, e);
 
     await loadMetricSet(companyId);
-    await loadDaily(companyId);
+    const exists = await loadReport(companyId, startStr, endStr);
 
-    setMsg(csaMsg, "Loaded.", "ok");
+    setMsg(csaMsg, exists ? "Loaded." : "No report exists for this range. Click Create report (management).", exists ? "ok" : "err");
+
     renderCsaTable();
   } catch (e) {
     console.error(e);
@@ -1221,20 +1266,14 @@ btnCsaCreate?.addEventListener("click", async () => {
     if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
     if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
 
+    const startStr = yyyyMmDd(s);
+    const endStr = yyyyMmDd(e);
+
     selectedCompanyId = companyId;
     currentCsaDays = eachDayInclusive(s, e);
 
     await loadMetricSet(companyId);
-
-    // Initialize empty rows (does not overwrite existing DB values)
-    currentCsaValuesByDate = {};
-    for (const day of currentCsaDays) currentCsaValuesByDate[day] = {};
-
-    // Optional: create empty daily docs so the range is "ready"
-    await createDailyStubsIfMissing(companyId);
-
-    setMsg(csaMsg, "Range ready. Enter values and click Save.", "ok");
-    renderCsaTable();
+    await createReport(companyId, startStr, endStr);
   } catch (e) {
     setMsg(csaMsg, "Create failed: " + (e?.message || e), "err");
   }
@@ -1253,16 +1292,11 @@ btnCsaSave?.addEventListener("click", async () => {
     if (!s || !e) return setMsg(csaMsg, "Pick start and end date.", "err");
     if (e < s) return setMsg(csaMsg, "End date must be after start date.", "err");
 
-    selectedCompanyId = companyId;
-    currentCsaDays = eachDayInclusive(s, e);
-
-    // Save uses the current table state (currentCsaValuesByDate)
-    await saveDaily(companyId);
+    await saveReport(companyId, yyyyMmDd(s), yyyyMmDd(e));
   } catch (e) {
     setMsg(csaMsg, "Save failed: " + (e?.message || e), "err");
   }
 });
-
 
 /* -------------------------------
    Auth actions
