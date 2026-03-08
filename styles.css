@@ -473,68 +473,209 @@ textarea{resize:vertical; min-height:90px}
 }
 
 
-/* ===== QVI visual polish ===== */
-.qvi-row-dirty {
-  background: color-mix(in srgb, var(--fedex-orange) 10%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--fedex-orange) 35%, var(--border));
+/* QVI Dashboard */
+.qvi-controls{
+  display:grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(140px, .7fr) minmax(280px, 1.3fr) auto;
+  gap:12px;
+  align-items:end;
+  margin-bottom:16px;
+}
+.qvi-toolbar-actions{justify-content:flex-end; margin-top:0; height:100%}
+.qvi-year-field, .qvi-quarter-field{min-width:0}
+.quarter-tabs{display:flex; gap:8px; flex-wrap:wrap}
+.quarter-tab{
+  border:1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color:var(--muted);
+  padding:10px 12px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:800;
+}
+.quarter-tab.active{
+  color:#fff;
+  border-color: color-mix(in srgb, var(--fedex-orange) 55%, var(--border));
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-purple) 72%, #000 28%),
+    color-mix(in srgb, var(--fedex-blue) 68%, #000 32%));
+}
+.qvi-stat-grid{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.qvi-stat-card, .qvi-visual-card{
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--card) 92%, transparent),
+      color-mix(in srgb, var(--fedex-purple) 8%, var(--card)));
+}
+.qvi-stat-label{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em}
+.qvi-stat-value{font-size:34px; font-weight:900; margin-top:6px}
+.qvi-stat-sub{font-size:13px; color:var(--muted); margin-top:6px}
+.qvi-visual-grid{
+  display:grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+.qvi-progress-block + .qvi-progress-block{margin-top:14px}
+.qvi-progress-head{display:flex; justify-content:space-between; gap:12px; margin-bottom:8px}
+.progress-track{
+  width:100%;
+  height:16px;
+  background: color-mix(in srgb, var(--card) 82%, #000 18%);
+  border:1px solid var(--border);
+  border-radius:999px;
+  overflow:hidden;
+}
+.progress-fill{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-purple) 78%, #000 22%),
+    color-mix(in srgb, var(--fedex-orange) 84%, #000 16%));
+}
+.progress-fill.alt{
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-blue) 82%, #000 18%),
+    color-mix(in srgb, var(--fedex-purple) 75%, #000 25%));
+}
+.qvi-status-stack{display:flex; flex-direction:column; gap:10px; margin-top:10px}
+.qvi-status-row{display:flex; flex-direction:column; gap:6px}
+.qvi-status-top{display:flex; justify-content:space-between; gap:12px; font-size:13px}
+.qvi-status-label{color:var(--muted)}
+.qvi-table-head{margin-top:2px}
+.qvi-table-wrap{overflow:auto}
+.qvi-table{width:100%; border-collapse:collapse; min-width:1120px}
+.qvi-table th, .qvi-table td{
+  border-bottom:1px solid var(--border);
+  padding:12px 10px;
+  text-align:left;
+  vertical-align:top;
+}
+.qvi-table th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background: color-mix(in srgb, var(--fedex-purple) 68%, var(--card));
+  color:#fff;
+  font-size:12px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.qvi-table tbody tr:hover{background: color-mix(in srgb, var(--fedex-blue) 8%, transparent)}
+.qvi-tag{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:12px;
+  font-weight:800;
+  border:1px solid var(--border);
+}
+.qvi-tag.yes{
+  color:#fff;
+  background: color-mix(in srgb, var(--ok) 45%, #000 55%);
+  border-color: color-mix(in srgb, var(--ok) 55%, var(--border));
+}
+.qvi-tag.no{
+  color:var(--muted);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+}
+@media (max-width:1000px){
+  .qvi-controls{grid-template-columns:1fr 1fr;}
+  .qvi-stat-grid{grid-template-columns:1fr 1fr}
+  .qvi-visual-grid{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  .qvi-controls{grid-template-columns:1fr}
+  .qvi-stat-grid{grid-template-columns:1fr}
 }
 
-.qvi-row-actions {
-  display:flex;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;
+
+
+/* ===== QVI row visuals + dirty state (added on top of the good dashboard styles) ===== */
+.qvi-row-dirty {
+  background: rgba(255, 170, 0, 0.08) !important;
+  outline: 1px solid rgba(255, 170, 0, 0.22);
 }
 
 .qvi-status-pill {
-  font-weight:800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
+
 .qvi-status-complete {
-  color:#d8fff0;
+  color: #d8fff0;
   border-color: rgba(40,198,122,.45);
   background: rgba(40,198,122,.18);
 }
+
 .qvi-status-pending-ssti,
 .qvi-status-in-progress,
 .qvi-status-ssti-only {
-  color:#ffe8c2;
-  border-color: rgba(240,179,90,.42);
-  background: rgba(240,179,90,.14);
+  color: #fff0d6;
+  border-color: rgba(240,179,90,.45);
+  background: rgba(240,179,90,.16);
 }
+
 .qvi-status-not-started {
-  color:#ffd7dc;
-  border-color: rgba(255,76,94,.35);
-  background: rgba(255,76,94,.12);
+  color: #ffd9de;
+  border-color: rgba(255,76,94,.40);
+  background: rgba(255,76,94,.14);
 }
+
 .qvi-status-dirty {
-  color:#fff3d0;
-  border-color: rgba(255,102,0,.45);
-  background: rgba(255,102,0,.16);
+  color: #fff5cc;
+  border-color: rgba(255, 184, 0, .50);
+  background: rgba(255, 184, 0, .16);
 }
 
 .qvi-toggle-wrap {
-  display:flex;
-  justify-content:center;
+  display: flex;
+  justify-content: center;
 }
 
 .qvi-toggle {
-  border:1px solid var(--border);
-  background: color-mix(in srgb, var(--card) 92%, transparent);
+  min-width: 88px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fedex-purple) 35%, var(--border));
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--card) 96%, transparent),
+      color-mix(in srgb, var(--card) 90%, transparent));
   color: var(--muted);
-  border-radius:999px;
-  padding:7px 12px;
-  font-size:12px;
-  font-weight:800;
-  cursor:pointer;
-  min-width:88px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .18s ease;
 }
+
 .qvi-toggle.active {
-  color:#fff;
-  border-color: color-mix(in srgb, var(--fedex-blue) 40%, var(--border));
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--fedex-purple) 65%, #000 35%),
-    color-mix(in srgb, var(--fedex-orange) 80%, #000 20%));
+  color: #fff;
+  border-color: rgba(255,255,255,.14);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--fedex-purple) 85%, #000 15%),
+      color-mix(in srgb, var(--fedex-orange) 80%, #000 20%));
 }
+
 .qvi-toggle:hover { filter: brightness(1.06); }
 
 .btn.disabled,
