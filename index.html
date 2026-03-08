@@ -70,6 +70,7 @@
           <button class="tab active" data-tab="open">Open</button>
           <button class="tab" data-tab="history">History</button>
           <button class="tab" data-tab="csa">CSA Summary</button>
+          <button class="tab" data-tab="qvi">QVI Dashboard</button>
           <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
         </div>
 
@@ -164,6 +165,128 @@
             <div id="companyEmpty" class="empty hidden">No companies yet.</div>
           </div>
         </div>
+      </section>
+
+
+      <!-- QVI DASHBOARD -->
+      <section id="panel-qvi" class="card panel hidden">
+        <div class="panel-head">
+          <h2>Quarterly Vehicle Inspection Dashboard</h2>
+          <div class="panel-actions">
+            <span class="pill">QVI Progress</span>
+          </div>
+        </div>
+
+        <div class="qvi-controls">
+          <div class="field">
+            <label>Company</label>
+            <select id="qviCompanySelect">
+              <option value="">All companies</option>
+            </select>
+          </div>
+
+          <div class="field qvi-year-field">
+            <label>Year</label>
+            <select id="qviYearSelect"></select>
+          </div>
+
+          <div class="field qvi-quarter-field">
+            <label>Quarter</label>
+            <div id="qviQuarterTabs" class="quarter-tabs">
+              <button class="quarter-tab active" data-quarter="QTR1">QTR1</button>
+              <button class="quarter-tab" data-quarter="QTR2">QTR2</button>
+              <button class="quarter-tab" data-quarter="QTR3">QTR3</button>
+              <button class="quarter-tab" data-quarter="QTR4">QTR4</button>
+            </div>
+          </div>
+
+          <div class="row qvi-toolbar-actions">
+            <button id="btnQviRefresh" class="btn">Refresh</button>
+          </div>
+        </div>
+
+        <div id="qviMsg" class="msg hidden"></div>
+
+        <div class="qvi-stat-grid">
+          <div class="qvi-stat-card">
+            <div class="qvi-stat-label">Total Scheduled</div>
+            <div id="qviStatScheduled" class="qvi-stat-value">0</div>
+            <div class="qvi-stat-sub">Active vehicles in selected company</div>
+          </div>
+
+          <div class="qvi-stat-card">
+            <div class="qvi-stat-label">QVI Completed</div>
+            <div id="qviStatCompleted" class="qvi-stat-value">0</div>
+            <div id="qviStatCompletedPct" class="qvi-stat-sub">0.0% complete</div>
+          </div>
+
+          <div class="qvi-stat-card">
+            <div class="qvi-stat-label">SSTI Completed</div>
+            <div id="qviStatSsti" class="qvi-stat-value">0</div>
+            <div id="qviStatSstiPct" class="qvi-stat-sub">0.0% complete</div>
+          </div>
+
+          <div class="qvi-stat-card">
+            <div class="qvi-stat-label">Remaining</div>
+            <div id="qviStatRemaining" class="qvi-stat-value">0</div>
+            <div class="qvi-stat-sub">Vehicles still needing QVI</div>
+          </div>
+        </div>
+
+        <div class="qvi-visual-grid">
+          <div class="qvi-visual-card">
+            <h3>Quarter Progress</h3>
+            <div class="qvi-progress-block">
+              <div class="qvi-progress-head">
+                <span>QVI Completion</span>
+                <strong id="qviProgressQviText">0%</strong>
+              </div>
+              <div class="progress-track"><div id="qviProgressQviBar" class="progress-fill" style="width:0%"></div></div>
+            </div>
+
+            <div class="qvi-progress-block">
+              <div class="qvi-progress-head">
+                <span>SSTI Completion</span>
+                <strong id="qviProgressSstiText">0%</strong>
+              </div>
+              <div class="progress-track"><div id="qviProgressSstiBar" class="progress-fill alt" style="width:0%"></div></div>
+            </div>
+          </div>
+
+          <div class="qvi-visual-card">
+            <h3>Status Snapshot</h3>
+            <div id="qviStatusSnapshot" class="qvi-status-stack"></div>
+          </div>
+        </div>
+
+        <div class="panel-head qvi-table-head">
+          <h3>Vehicle Inspection Records</h3>
+          <div class="panel-actions">
+            <input id="qviSearchInput" type="search" placeholder="Search vehicle number, entity, unit type..." />
+          </div>
+        </div>
+
+        <div class="table-wrap qvi-table-wrap">
+          <table class="qvi-table">
+            <thead>
+              <tr>
+                <th>Entity Name</th>
+                <th>Unit Type</th>
+                <th>Vehicle Number</th>
+                <th>Quarter</th>
+                <th>Inspection Date</th>
+                <th>Inspected By</th>
+                <th>Out of Service</th>
+                <th>QVI Complete</th>
+                <th>SSTI Complete</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="qviTableBody"></tbody>
+          </table>
+        </div>
+
+        <div id="qviEmpty" class="empty hidden">No QVI records to show yet for this quarter.</div>
       </section>
 
       <!-- ADMIN -->

@@ -471,3 +471,130 @@ textarea{resize:vertical; min-height:90px}
 @media (min-width: 1400px){
   .container{ width:min(1650px, 96vw); }
 }
+
+
+/* QVI Dashboard */
+.qvi-controls{
+  display:grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(140px, .7fr) minmax(280px, 1.3fr) auto;
+  gap:12px;
+  align-items:end;
+  margin-bottom:16px;
+}
+.qvi-toolbar-actions{justify-content:flex-end; margin-top:0; height:100%}
+.qvi-year-field, .qvi-quarter-field{min-width:0}
+.quarter-tabs{display:flex; gap:8px; flex-wrap:wrap}
+.quarter-tab{
+  border:1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color:var(--muted);
+  padding:10px 12px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:800;
+}
+.quarter-tab.active{
+  color:#fff;
+  border-color: color-mix(in srgb, var(--fedex-orange) 55%, var(--border));
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-purple) 72%, #000 28%),
+    color-mix(in srgb, var(--fedex-blue) 68%, #000 32%));
+}
+.qvi-stat-grid{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.qvi-stat-card, .qvi-visual-card{
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--card) 92%, transparent),
+      color-mix(in srgb, var(--fedex-purple) 8%, var(--card)));
+}
+.qvi-stat-label{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em}
+.qvi-stat-value{font-size:34px; font-weight:900; margin-top:6px}
+.qvi-stat-sub{font-size:13px; color:var(--muted); margin-top:6px}
+.qvi-visual-grid{
+  display:grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+.qvi-progress-block + .qvi-progress-block{margin-top:14px}
+.qvi-progress-head{display:flex; justify-content:space-between; gap:12px; margin-bottom:8px}
+.progress-track{
+  width:100%;
+  height:16px;
+  background: color-mix(in srgb, var(--card) 82%, #000 18%);
+  border:1px solid var(--border);
+  border-radius:999px;
+  overflow:hidden;
+}
+.progress-fill{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-purple) 78%, #000 22%),
+    color-mix(in srgb, var(--fedex-orange) 84%, #000 16%));
+}
+.progress-fill.alt{
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--fedex-blue) 82%, #000 18%),
+    color-mix(in srgb, var(--fedex-purple) 75%, #000 25%));
+}
+.qvi-status-stack{display:flex; flex-direction:column; gap:10px; margin-top:10px}
+.qvi-status-row{display:flex; flex-direction:column; gap:6px}
+.qvi-status-top{display:flex; justify-content:space-between; gap:12px; font-size:13px}
+.qvi-status-label{color:var(--muted)}
+.qvi-table-head{margin-top:2px}
+.qvi-table-wrap{overflow:auto}
+.qvi-table{width:100%; border-collapse:collapse; min-width:1120px}
+.qvi-table th, .qvi-table td{
+  border-bottom:1px solid var(--border);
+  padding:12px 10px;
+  text-align:left;
+  vertical-align:top;
+}
+.qvi-table th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background: color-mix(in srgb, var(--fedex-purple) 68%, var(--card));
+  color:#fff;
+  font-size:12px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.qvi-table tbody tr:hover{background: color-mix(in srgb, var(--fedex-blue) 8%, transparent)}
+.qvi-tag{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:12px;
+  font-weight:800;
+  border:1px solid var(--border);
+}
+.qvi-tag.yes{
+  color:#fff;
+  background: color-mix(in srgb, var(--ok) 45%, #000 55%);
+  border-color: color-mix(in srgb, var(--ok) 55%, var(--border));
+}
+.qvi-tag.no{
+  color:var(--muted);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+}
+@media (max-width:1000px){
+  .qvi-controls{grid-template-columns:1fr 1fr;}
+  .qvi-stat-grid{grid-template-columns:1fr 1fr}
+  .qvi-visual-grid{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  .qvi-controls{grid-template-columns:1fr}
+  .qvi-stat-grid{grid-template-columns:1fr}
+}

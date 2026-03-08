@@ -200,6 +200,27 @@ const btnCsaSave = $("btnCsaSave");
 const csaMsg = $("csaMsg");
 const csaTableWrap = $("csaTableWrap");
 
+// QVI
+const qviCompanySelect = $("qviCompanySelect");
+const qviYearSelect = $("qviYearSelect");
+const qviQuarterTabs = Array.from(document.querySelectorAll(".quarter-tab"));
+const btnQviRefresh = $("btnQviRefresh");
+const qviMsg = $("qviMsg");
+const qviSearchInput = $("qviSearchInput");
+const qviTableBody = $("qviTableBody");
+const qviEmpty = $("qviEmpty");
+const qviStatScheduled = $("qviStatScheduled");
+const qviStatCompleted = $("qviStatCompleted");
+const qviStatCompletedPct = $("qviStatCompletedPct");
+const qviStatSsti = $("qviStatSsti");
+const qviStatSstiPct = $("qviStatSstiPct");
+const qviStatRemaining = $("qviStatRemaining");
+const qviProgressQviBar = $("qviProgressQviBar");
+const qviProgressQviText = $("qviProgressQviText");
+const qviProgressSstiBar = $("qviProgressSstiBar");
+const qviProgressSstiText = $("qviProgressSstiText");
+const qviStatusSnapshot = $("qviStatusSnapshot");
+
 const companyName = $("companyName");
 const btnCompanyAdd = $("btnCompanyAdd");
 const companyList = $("companyList");
@@ -230,6 +251,11 @@ let currentCsaReportId = null;
 let currentCsaValuesByDate = {};
 let currentCsaDays = [];
 let csaTotalsTds = [];
+
+// QVI
+let qviSelectedQuarter = "QTR1";
+let qviVehiclesCache = [];
+let qviInspectionsCache = [];
 
 /* -------------------------------
    UI helpers
@@ -378,7 +404,156 @@ function setTab(tab) {
   show($("panel-open"), tab === "open");
   show($("panel-history"), tab === "history");
   show($("panel-csa"), tab === "csa");
+  show($("panel-qvi"), tab === "qvi");
   show($("panel-admin"), tab === "admin");
+}
+
+
+function formatPct(n) {
+  const num = Number(n) || 0;
+  return `${num.toFixed(1)}%`;
+}
+
+function setQuarterTabUI() {
+  qviQuarterTabs.forEach(btn => btn.classList.toggle("active", btn.dataset.quarter === qviSelectedQuarter));
+}
+
+function populateQviYearSelect() {
+  if (!qviYearSelect || qviYearSelect.options.length) return;
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear + 1; y >= thisYear - 2; y--) {
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = String(y);
+    if (y === thisYear) opt.selected = true;
+    qviYearSelect.appendChild(opt);
+  }
+}
+
+function populateQviCompanySelect() {
+  if (!qviCompanySelect) return;
+  const current = qviCompanySelect.value;
+  qviCompanySelect.innerHTML = '<option value="">All companies</option>';
+
+  for (const c of companiesCache || []) {
+    if (!c?.active) continue;
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.name || c.id;
+    qviCompanySelect.appendChild(opt);
+  }
+
+  if (current) qviCompanySelect.value = current;
+}
+
+function qviMatchesSearch(row) {
+  const q = (qviSearchInput?.value || "").trim().toLowerCase();
+  if (!q) return true;
+  return [
+    row.entityName,
+    row.unitType,
+    row.vehicleNumber,
+    row.quarter,
+    row.inspectedBy,
+    row.notes
+  ].join(" ").toLowerCase().includes(q);
+}
+
+function quarterRecordForVehicle(vehicle, inspection) {
+  const quarter = qviSelectedQuarter;
+  return {
+    entityName: vehicle?.entityName || "",
+    unitType: vehicle?.unitType || "",
+    vehicleNumber: vehicle?.vehicleNumber || vehicle?.id || "",
+    quarter,
+    inspectionDate: inspection?.inspectionDate || "",
+    inspectedBy: inspection?.inspectedBy || "",
+    outOfService: Boolean(inspection?.outOfService),
+    qviComplete: Boolean(inspection?.qviComplete),
+    sstiComplete: Boolean(inspection?.sstiComplete),
+    notes: inspection?.notes || ""
+  };
+}
+
+function qviTag(text, yes) {
+  return `<span class="qvi-tag ${yes ? "yes" : "no"}">${text}</span>`;
+}
+
+function renderQviStatusSnapshot(stats) {
+  if (!qviStatusSnapshot) return;
+  const rows = [
+    ["QVI Completed", stats.completedPct],
+    ["SSTI Completed", stats.sstiPct],
+    ["Remaining", stats.remainingPct]
+  ];
+
+  qviStatusSnapshot.innerHTML = rows.map(([label, pct]) => `
+    <div class="qvi-status-row">
+      <div class="qvi-status-top">
+        <span class="qvi-status-label">${label}</span>
+        <strong>${formatPct(pct)}</strong>
+      </div>
+      <div class="progress-track"><div class="progress-fill ${label.includes("SSTI") ? "alt" : ""}" style="width:${Math.max(0, Math.min(100, pct))}%"></div></div>
+    </div>
+  `).join("");
+}
+
+function renderQviDashboard(rows) {
+  const scheduled = rows.length;
+  const completed = rows.filter(r => r.qviComplete).length;
+  const ssti = rows.filter(r => r.sstiComplete).length;
+  const remaining = Math.max(0, scheduled - completed);
+  const completedPct = scheduled ? (completed / scheduled) * 100 : 0;
+  const sstiPct = scheduled ? (ssti / scheduled) * 100 : 0;
+  const remainingPct = scheduled ? (remaining / scheduled) * 100 : 0;
+
+  if (qviStatScheduled) qviStatScheduled.textContent = String(scheduled);
+  if (qviStatCompleted) qviStatCompleted.textContent = String(completed);
+  if (qviStatCompletedPct) qviStatCompletedPct.textContent = `${formatPct(completedPct)} complete`;
+  if (qviStatSsti) qviStatSsti.textContent = String(ssti);
+  if (qviStatSstiPct) qviStatSstiPct.textContent = `${formatPct(sstiPct)} complete`;
+  if (qviStatRemaining) qviStatRemaining.textContent = String(remaining);
+  if (qviProgressQviBar) qviProgressQviBar.style.width = `${completedPct}%`;
+  if (qviProgressQviText) qviProgressQviText.textContent = formatPct(completedPct);
+  if (qviProgressSstiBar) qviProgressSstiBar.style.width = `${sstiPct}%`;
+  if (qviProgressSstiText) qviProgressSstiText.textContent = formatPct(sstiPct);
+
+  renderQviStatusSnapshot({ completedPct, sstiPct, remainingPct });
+}
+
+function renderQviTable() {
+  if (!qviTableBody) return;
+
+  const companyId = qviCompanySelect?.value || "";
+  const year = Number(qviYearSelect?.value || new Date().getFullYear());
+
+  const vehicles = (qviVehiclesCache || []).filter(v => v?.active !== false).filter(v => !companyId || v.companyId === companyId);
+  const inspections = (qviInspectionsCache || []).filter(i => Number(i?.year) === year).filter(i => (i?.quarter || "") === qviSelectedQuarter).filter(i => !companyId || i.companyId === companyId);
+
+  const byVehicle = new Map(inspections.map(i => [String(i.vehicleNumber || i.id || ""), i]));
+  const rows = vehicles.map(v => quarterRecordForVehicle(v, byVehicle.get(String(v.vehicleNumber || v.id || "")))).filter(qviMatchesSearch);
+
+  renderQviDashboard(rows);
+  qviTableBody.innerHTML = "";
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.entityName || ""}</td>
+      <td>${row.unitType || ""}</td>
+      <td><strong>${row.vehicleNumber || ""}</strong></td>
+      <td>${row.quarter}</td>
+      <td>${row.inspectionDate || "—"}</td>
+      <td>${row.inspectedBy || "—"}</td>
+      <td>${qviTag(row.outOfService ? "Yes" : "No", row.outOfService)}</td>
+      <td>${qviTag(row.qviComplete ? "Yes" : "No", row.qviComplete)}</td>
+      <td>${qviTag(row.sstiComplete ? "Yes" : "No", row.sstiComplete)}</td>
+      <td>${row.notes || "—"}</td>
+    `;
+    qviTableBody.appendChild(tr);
+  }
+
+  show(qviEmpty, rows.length === 0);
 }
 
 /* -------------------------------
@@ -403,6 +578,22 @@ async function requireAllowedUser(user) {
 -------------------------------- */
 allTabs.forEach(btn => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
+});
+
+qviQuarterTabs.forEach(btn => {
+  btn.addEventListener("click", () => {
+    qviSelectedQuarter = btn.dataset.quarter || "QTR1";
+    setQuarterTabUI();
+    renderQviTable();
+  });
+});
+
+qviCompanySelect?.addEventListener("change", renderQviTable);
+qviYearSelect?.addEventListener("change", renderQviTable);
+qviSearchInput?.addEventListener("input", renderQviTable);
+btnQviRefresh?.addEventListener("click", () => {
+  setMsg(qviMsg, "QVI layout is ready. Firestore data wiring comes in the next step.", "ok");
+  renderQviTable();
 });
 
 /* -------------------------------
@@ -1423,6 +1614,8 @@ onAuthStateChanged(auth, async (user) => {
 
     currentUser = user;
     setRole(res.role);
+    populateQviYearSelect();
+    setQuarterTabUI();
     if (userPill) userPill.textContent = `${user.email} • ${res.role}`;
     setSignedInUI(true);
 
