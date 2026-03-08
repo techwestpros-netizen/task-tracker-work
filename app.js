@@ -1728,22 +1728,117 @@ function renderQviTable() {
   if (!qviTableBody) return;
   const rows = (window.__qviRows || []).filter(qviMatchesSearch);
   qviTableBody.innerHTML = rows.map(r => `
-    <tr>
-      <td>${qviEscape(r.entityName)}</td>
-      <td>${qviEscape(r.unitType)}</td>
+    <tr data-vehicle="${qviEscape(r.vehicleNumber)}">
+      <td><input data-field="entityName" type="text" value="${qviEscape(r.entityName)}" /></td>
+      <td>
+        <select data-field="unitType">
+          <option value="P&D" ${r.unitType === "P&D" ? "selected" : ""}>P&amp;D</option>
+          <option value="Tractor" ${r.unitType === "Tractor" ? "selected" : ""}>Tractor</option>
+          <option value="Trailer" ${r.unitType === "Trailer" ? "selected" : ""}>Trailer</option>
+          <option value="Other" ${r.unitType === "Other" ? "selected" : ""}>Other</option>
+        </select>
+      </td>
       <td>${qviEscape(r.vehicleNumber)}</td>
       <td>${qviEscape(r.quarter)}</td>
-      <td>${qviEscape(r.inspectionDate || "-")}</td>
-      <td>${qviEscape(r.inspectedBy || "-")}</td>
-      <td>${r.outOfService ? "Yes" : "-"}</td>
-      <td>${r.qviComplete ? "Yes" : "-"}</td>
-      <td>${r.sstiComplete ? "Yes" : "-"}</td>
-      <td>${qviEscape(r.notes || "")}</td>
+      <td><input data-field="inspectionDate" type="date" value="${qviEscape(r.inspectionDate || "")}" /></td>
+      <td><input data-field="inspectedBy" type="text" value="${qviEscape(r.inspectedBy || "")}" placeholder="Inspector name" /></td>
+      <td style="text-align:center;"><input data-field="outOfService" type="checkbox" ${r.outOfService ? "checked" : ""} /></td>
+      <td style="text-align:center;"><input data-field="qviComplete" type="checkbox" ${r.qviComplete ? "checked" : ""} /></td>
+      <td style="text-align:center;"><input data-field="sstiComplete" type="checkbox" ${r.sstiComplete ? "checked" : ""} /></td>
+      <td><input data-field="notes" type="text" value="${qviEscape(r.notes || "")}" placeholder="Notes" /></td>
+      <td class="qvi-row-actions">
+        <button class="btn" data-action="save-inspection" data-vehicle="${qviEscape(r.vehicleNumber)}">Save</button>
+        ${currentRole === "management" ? `<button class="btn danger" data-action="delete-vehicle" data-vehicle="${qviEscape(r.vehicleNumber)}">Remove</button>` : ""}
+      </td>
     </tr>
   `).join("");
 
   show(qviEmpty, rows.length === 0);
 }
+
+qviTableBody?.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const vehicleNumber = btn.dataset.vehicle || "";
+  if (!vehicleNumber) return;
+
+  if (action === "delete-vehicle") {
+    if (currentRole !== "management") {
+      alert("Only management can remove vehicles.");
+      return;
+    }
+    const ok = confirm(`Remove vehicle ${vehicleNumber}? This marks it inactive but keeps history.`);
+    if (!ok) return;
+    try {
+      await setDoc(doc(db, "qviVehicles", vehicleNumber), {
+        active: false,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+      setMsg(qviMsg, `Vehicle ${vehicleNumber} removed from active list.`, "ok");
+      await loadQviDashboard();
+    } catch (error) {
+      console.error(error);
+      setMsg(qviMsg, "Could not remove vehicle: " + (error?.message || error), "err");
+    }
+    return;
+  }
+
+  if (action === "save-inspection") {
+    const row = btn.closest("tr");
+    if (!row) return;
+
+    const entityName = row.querySelector('[data-field="entityName"]')?.value?.trim() || "";
+    const unitType = row.querySelector('[data-field="unitType"]')?.value?.trim() || "";
+    const inspectionDate = row.querySelector('[data-field="inspectionDate"]')?.value || "";
+    const inspectedBy = row.querySelector('[data-field="inspectedBy"]')?.value?.trim() || "";
+    const outOfService = !!row.querySelector('[data-field="outOfService"]')?.checked;
+    const qviComplete = !!row.querySelector('[data-field="qviComplete"]')?.checked;
+    const sstiComplete = !!row.querySelector('[data-field="sstiComplete"]')?.checked;
+    const notes = row.querySelector('[data-field="notes"]')?.value?.trim() || "";
+
+    const vehicle = qviVehiclesCache.find(v => String(v.vehicleNumber) === String(vehicleNumber));
+    const companyId = vehicle?.companyId || "";
+
+    try {
+      await setDoc(doc(db, "qviInspections", qviDocId(vehicleNumber, qviYear, qviQuarter)), {
+        vehicleNumber,
+        entityName,
+        unitType,
+        companyId,
+        year: Number(qviYear),
+        quarter: qviQuarter,
+        inspectionDate,
+        inspectedBy,
+        outOfService,
+        qviComplete,
+        sstiComplete,
+        notes,
+        status: qviComplete ? "completed" : "open",
+        completedAt: qviComplete ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+
+      await setDoc(doc(db, "qviVehicles", vehicleNumber), {
+        vehicleNumber,
+        entityName,
+        unitType,
+        companyId,
+        active: true,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+
+      setMsg(qviMsg, `Saved inspection for vehicle ${vehicleNumber}.`, "ok");
+      await loadQviDashboard();
+    } catch (error) {
+      console.error(error);
+      setMsg(qviMsg, "Could not save inspection: " + (error?.message || error), "err");
+    }
+  }
+});
 
 // keep QVI companies fresh when companies collection changes
 const __origStartCompaniesListener = startCompaniesListener;
