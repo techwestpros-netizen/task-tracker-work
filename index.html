@@ -179,15 +179,15 @@
 
         <div class="qvi-controls">
           <div class="field">
-            <label>Company</label>
-            <select id="qviCompanySelect">
-              <option value="">All companies</option>
+            <label>Entity</label>
+            <select id="qviEntitySelect">
+              <option value="">All entities</option>
             </select>
           </div>
 
           <div class="field qvi-year-field">
             <label>Year</label>
-            <select id="qviYearSelect"></select>
+            <input id="qviYearInput" type="number" min="2000" max="2100" step="1" placeholder="2026" />
           </div>
 
           <div class="field qvi-quarter-field">
@@ -211,7 +211,7 @@
           <div class="qvi-stat-card">
             <div class="qvi-stat-label">Total Scheduled</div>
             <div id="qviStatScheduled" class="qvi-stat-value">0</div>
-            <div class="qvi-stat-sub">Active vehicles in selected company</div>
+            <div class="qvi-stat-sub">Active vehicles in selected entity</div>
           </div>
 
           <div class="qvi-stat-card">
@@ -297,7 +297,8 @@
 
         <div class="panel-head qvi-table-head">
           <h3>Vehicle Inspection Records</h3>
-          <div class="panel-actions">
+          <div class="panel-actions" style="gap:10px; display:flex; align-items:center; flex-wrap:wrap;">
+            <button id="btnQviSaveAll" class="btn primary">Save All Changes</button>
             <input id="qviSearchInput" type="search" placeholder="Search vehicle number, entity, unit type..." />
           </div>
         </div>
@@ -316,7 +317,7 @@
                 <th>QVI Complete</th>
                 <th>SSTI Complete</th>
                 <th>Notes</th>
-                <th>Actions</th>
+                <th>Status / Actions</th>
               </tr>
             </thead>
             <tbody id="qviTableBody"></tbody>

@@ -25,7 +25,8 @@ import {
   where,
   orderBy,
   limit,
-  onSnapshot
+  onSnapshot,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
 /* -------------------------------
@@ -1458,10 +1459,11 @@ onAuthStateChanged(auth, async (user) => {
 -------------------------------- */
 const panelQvi = $("panel-qvi");
 const qviMsg = $("qviMsg");
-const qviCompanySelect = $("qviCompanySelect");
-const qviYearSelect = $("qviYearSelect");
+const qviEntitySelect = $("qviEntitySelect");
+const qviYearInput = $("qviYearInput");
 const qviQuarterTabs = Array.from(document.querySelectorAll(".quarter-tab"));
 const btnQviRefresh = $("btnQviRefresh");
+const btnQviSaveAll = $("btnQviSaveAll");
 const qviSearchInput = $("qviSearchInput");
 const qviTableBody = $("qviTableBody");
 const qviEmpty = $("qviEmpty");
@@ -1490,6 +1492,7 @@ let qviQuarter = "QTR1";
 let qviYear = String(new Date().getFullYear());
 let qviVehiclesCache = [];
 let qviInspectionsCache = [];
+let qviRenderedRows = [];
 
 function qviDocId(vehicleNumber, year, quarter) {
   return `${String(vehicleNumber).trim()}_${year}_${quarter}`;
@@ -1514,21 +1517,19 @@ function qviMatchesSearch(row) {
   ].join(" ").toLowerCase();
   return hay.includes(q);
 }
+function qviSetYearInput() {
+  if (!qviYearInput) return;
+  const current = new Date().getFullYear();
+  if (!qviYearInput.value) qviYearInput.value = String(current);
+  qviYearInput.min = "2000";
+  qviYearInput.max = "2100";
+  qviYear = qviYearInput.value || String(current);
+}
 function initQviUi() {
   if (qviInitialized) return;
   qviInitialized = true;
 
-  if (qviYearSelect && !qviYearSelect.options.length) {
-    const current = new Date().getFullYear();
-    for (let y = current - 1; y <= current + 2; y++) {
-      const opt = document.createElement("option");
-      opt.value = String(y);
-      opt.textContent = String(y);
-      if (y === current) opt.selected = true;
-      qviYearSelect.appendChild(opt);
-    }
-    qviYear = qviYearSelect.value || String(current);
-  }
+  qviSetYearInput();
 
   qviQuarterTabs.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1538,25 +1539,27 @@ function initQviUi() {
     });
   });
 
-  qviYearSelect?.addEventListener("change", () => {
-    qviYear = qviYearSelect.value || String(new Date().getFullYear());
+  qviYearInput?.addEventListener("change", () => {
+    const raw = String(qviYearInput.value || "").trim();
+    qviYear = /^\d{4}$/.test(raw) ? raw : String(new Date().getFullYear());
+    qviYearInput.value = qviYear;
     loadQviDashboard();
   });
 
-  qviCompanySelect?.addEventListener("change", () => loadQviDashboard());
+  qviEntitySelect?.addEventListener("change", () => loadQviDashboard());
   qviSearchInput?.addEventListener("input", () => renderQviTable());
   btnQviRefresh?.addEventListener("click", () => loadQviDashboard());
+  btnQviSaveAll?.addEventListener("click", saveAllQviChanges);
 
   addVehicleBtn?.addEventListener("click", async () => {
     if (currentRole !== "management") {
-      alert("Only management can add vehicles.");
+      setMsg(vehicleMsg, "Only management can add vehicles.", "err");
       return;
     }
 
     const vehicleNumber = (vehicleNumberInput?.value || "").trim();
     const entityName = (entityNameInput?.value || "").trim();
     const unitType = unitTypeInput?.value || "P&D";
-    const companyId = (qviCompanySelect?.value || "").trim();
 
     if (!vehicleNumber || !entityName) {
       setMsg(vehicleMsg, "Enter vehicle number and entity name.", "err");
@@ -1568,7 +1571,7 @@ function initQviUi() {
         vehicleNumber,
         entityName,
         unitType,
-        companyId: companyId || "",
+        companyId: entityName,
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -1584,7 +1587,6 @@ function initQviUi() {
     } catch (error) {
       console.error("Add vehicle failed:", error);
       setMsg(vehicleMsg, "Error adding vehicle: " + (error?.message || error), "err");
-      alert("Error adding vehicle");
     }
   });
 }
@@ -1595,7 +1597,7 @@ async function loadQviDashboard() {
   setMsg(qviMsg, "", "");
 
   try {
-    const companyFilter = (qviCompanySelect?.value || "").trim();
+    const entityFilter = (qviEntitySelect?.value || "").trim();
 
     const vehiclesSnap = await getDocs(query(collection(db, "qviVehicles"), where("active", "==", true)));
     qviVehiclesCache = vehiclesSnap.docs.map(d => {
@@ -1632,42 +1634,49 @@ async function loadQviDashboard() {
       };
     });
 
-    fillQviCompanies();
-    renderQviDashboard(companyFilter);
+    fillQviEntities();
+    renderQviDashboard(entityFilter);
   } catch (e) {
     console.error(e);
     setMsg(qviMsg, "QVI load failed: " + (e?.message || e), "err");
   }
 }
 
-function fillQviCompanies() {
-  if (!qviCompanySelect) return;
-  const current = qviCompanySelect.value || "";
+function fillQviEntities() {
+  if (!qviEntitySelect) return;
+  const current = qviEntitySelect.value || "";
   const names = new Set();
 
-  for (const c of companiesCache) {
-    const name = c.name || c.id || "";
-    if (name) names.add(name);
-  }
   for (const v of qviVehiclesCache) {
-    if (v.companyId) names.add(v.companyId);
+    if (v.entityName) names.add(v.entityName);
+  }
+  for (const x of qviInspectionsCache) {
+    if (x.entityName) names.add(x.entityName);
   }
 
-  const arr = Array.from(names).sort((a,b)=>a.localeCompare(b));
-  qviCompanySelect.innerHTML = `<option value="">All companies</option>` +
+  const arr = Array.from(names).sort((a, b) => a.localeCompare(b));
+  qviEntitySelect.innerHTML = `<option value="">All entities</option>` +
     arr.map(name => `<option value="${qviEscape(name)}">${qviEscape(name)}</option>`).join("");
 
-  qviCompanySelect.value = arr.includes(current) ? current : "";
+  qviEntitySelect.value = arr.includes(current) ? current : "";
 }
 
-function renderQviDashboard(companyFilter = "") {
-  const vehicles = qviVehiclesCache.filter(v => !companyFilter || v.companyId === companyFilter);
+function renderQviDashboard(entityFilter = "") {
+  const vehicles = qviVehiclesCache.filter(v => !entityFilter || v.entityName === entityFilter);
   const inspectionByVehicle = new Map(
     qviInspectionsCache.map(x => [String(x.vehicleNumber), x])
   );
 
   const rows = vehicles.map(v => {
     const hit = inspectionByVehicle.get(String(v.vehicleNumber)) || {};
+    const qviComplete = !!hit.qviComplete;
+    const sstiComplete = !!hit.sstiComplete;
+    const status = qviComplete && sstiComplete
+      ? "Complete"
+      : (qviComplete || sstiComplete)
+        ? "Partial"
+        : "Not Started";
+
     return {
       entityName: hit.entityName || v.entityName || "",
       unitType: hit.unitType || v.unitType || "",
@@ -1676,9 +1685,10 @@ function renderQviDashboard(companyFilter = "") {
       inspectionDate: hit.inspectionDate || "",
       inspectedBy: hit.inspectedBy || "",
       outOfService: !!hit.outOfService,
-      qviComplete: !!hit.qviComplete,
-      sstiComplete: !!hit.sstiComplete,
-      notes: hit.notes || ""
+      qviComplete,
+      sstiComplete,
+      notes: hit.notes || "",
+      status
     };
   });
 
@@ -1720,15 +1730,15 @@ function renderQviDashboard(companyFilter = "") {
     `;
   }
 
-  window.__qviRows = rows;
+  qviRenderedRows = rows;
   renderQviTable();
 }
 
 function renderQviTable() {
   if (!qviTableBody) return;
-  const rows = (window.__qviRows || []).filter(qviMatchesSearch);
+  const rows = qviRenderedRows.filter(qviMatchesSearch);
   qviTableBody.innerHTML = rows.map(r => `
-    <tr data-vehicle="${qviEscape(r.vehicleNumber)}">
+    <tr data-vehicle="${qviEscape(r.vehicleNumber)}" data-status="${qviEscape(r.status)}">
       <td><input data-field="entityName" type="text" value="${qviEscape(r.entityName)}" /></td>
       <td>
         <select data-field="unitType">
@@ -1747,13 +1757,77 @@ function renderQviTable() {
       <td style="text-align:center;"><input data-field="sstiComplete" type="checkbox" ${r.sstiComplete ? "checked" : ""} /></td>
       <td><input data-field="notes" type="text" value="${qviEscape(r.notes || "")}" placeholder="Notes" /></td>
       <td class="qvi-row-actions">
-        <button class="btn" data-action="save-inspection" data-vehicle="${qviEscape(r.vehicleNumber)}">Save</button>
+        <span class="pill">${qviEscape(r.status)}</span>
         ${currentRole === "management" ? `<button class="btn danger" data-action="delete-vehicle" data-vehicle="${qviEscape(r.vehicleNumber)}">Remove</button>` : ""}
       </td>
     </tr>
   `).join("");
 
   show(qviEmpty, rows.length === 0);
+}
+
+async function saveAllQviChanges() {
+  if (!qviTableBody) return;
+  const rows = Array.from(qviTableBody.querySelectorAll("tr[data-vehicle]"));
+  if (!rows.length) {
+    setMsg(qviMsg, "No rows to save.", "err");
+    return;
+  }
+
+  try {
+    const batch = writeBatch(db);
+
+    rows.forEach((row) => {
+      const vehicleNumber = row.dataset.vehicle || "";
+      if (!vehicleNumber) return;
+
+      const entityName = row.querySelector('[data-field="entityName"]')?.value?.trim() || "";
+      const unitType = row.querySelector('[data-field="unitType"]')?.value?.trim() || "";
+      const inspectionDate = row.querySelector('[data-field="inspectionDate"]')?.value || "";
+      const inspectedBy = row.querySelector('[data-field="inspectedBy"]')?.value?.trim() || "";
+      const outOfService = !!row.querySelector('[data-field="outOfService"]')?.checked;
+      const qviComplete = !!row.querySelector('[data-field="qviComplete"]')?.checked;
+      const sstiComplete = !!row.querySelector('[data-field="sstiComplete"]')?.checked;
+      const notes = row.querySelector('[data-field="notes"]')?.value?.trim() || "";
+      const vehicle = qviVehiclesCache.find(v => String(v.vehicleNumber) === String(vehicleNumber));
+
+      batch.set(doc(db, "qviInspections", qviDocId(vehicleNumber, qviYear, qviQuarter)), {
+        vehicleNumber,
+        entityName,
+        unitType,
+        companyId: entityName,
+        year: Number(qviYear),
+        quarter: qviQuarter,
+        inspectionDate,
+        inspectedBy,
+        outOfService,
+        qviComplete,
+        sstiComplete,
+        notes,
+        status: qviComplete ? "completed" : "open",
+        completedAt: qviComplete ? serverTimestamp() : null,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+
+      batch.set(doc(db, "qviVehicles", vehicleNumber), {
+        vehicleNumber,
+        entityName,
+        unitType,
+        companyId: entityName,
+        active: vehicle?.active !== false,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+    });
+
+    await batch.commit();
+    setMsg(qviMsg, `Saved ${rows.length} vehicle record(s).`, "ok");
+    await loadQviDashboard();
+  } catch (error) {
+    console.error(error);
+    setMsg(qviMsg, "Could not save all changes: " + (error?.message || error), "err");
+  }
 }
 
 qviTableBody?.addEventListener("click", async (e) => {
@@ -1765,7 +1839,7 @@ qviTableBody?.addEventListener("click", async (e) => {
 
   if (action === "delete-vehicle") {
     if (currentRole !== "management") {
-      alert("Only management can remove vehicles.");
+      setMsg(qviMsg, "Only management can remove vehicles.", "err");
       return;
     }
     const ok = confirm(`Remove vehicle ${vehicleNumber}? This marks it inactive but keeps history.`);
@@ -1782,68 +1856,13 @@ qviTableBody?.addEventListener("click", async (e) => {
       console.error(error);
       setMsg(qviMsg, "Could not remove vehicle: " + (error?.message || error), "err");
     }
-    return;
-  }
-
-  if (action === "save-inspection") {
-    const row = btn.closest("tr");
-    if (!row) return;
-
-    const entityName = row.querySelector('[data-field="entityName"]')?.value?.trim() || "";
-    const unitType = row.querySelector('[data-field="unitType"]')?.value?.trim() || "";
-    const inspectionDate = row.querySelector('[data-field="inspectionDate"]')?.value || "";
-    const inspectedBy = row.querySelector('[data-field="inspectedBy"]')?.value?.trim() || "";
-    const outOfService = !!row.querySelector('[data-field="outOfService"]')?.checked;
-    const qviComplete = !!row.querySelector('[data-field="qviComplete"]')?.checked;
-    const sstiComplete = !!row.querySelector('[data-field="sstiComplete"]')?.checked;
-    const notes = row.querySelector('[data-field="notes"]')?.value?.trim() || "";
-
-    const vehicle = qviVehiclesCache.find(v => String(v.vehicleNumber) === String(vehicleNumber));
-    const companyId = vehicle?.companyId || "";
-
-    try {
-      await setDoc(doc(db, "qviInspections", qviDocId(vehicleNumber, qviYear, qviQuarter)), {
-        vehicleNumber,
-        entityName,
-        unitType,
-        companyId,
-        year: Number(qviYear),
-        quarter: qviQuarter,
-        inspectionDate,
-        inspectedBy,
-        outOfService,
-        qviComplete,
-        sstiComplete,
-        notes,
-        status: qviComplete ? "completed" : "open",
-        completedAt: qviComplete ? serverTimestamp() : null,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser?.email || ""
-      }, { merge: true });
-
-      await setDoc(doc(db, "qviVehicles", vehicleNumber), {
-        vehicleNumber,
-        entityName,
-        unitType,
-        companyId,
-        active: true,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser?.email || ""
-      }, { merge: true });
-
-      setMsg(qviMsg, `Saved inspection for vehicle ${vehicleNumber}.`, "ok");
-      await loadQviDashboard();
-    } catch (error) {
-      console.error(error);
-      setMsg(qviMsg, "Could not save inspection: " + (error?.message || error), "err");
-    }
   }
 });
 
-// keep QVI companies fresh when companies collection changes
+// keep QVI entity list fresh when companies collection changes
 const __origStartCompaniesListener = startCompaniesListener;
 startCompaniesListener = function(...args) {
   const out = __origStartCompaniesListener.apply(this, args);
-  try { fillQviCompanies(); } catch {}
+  try { fillQviEntities(); } catch {}
   return out;
 };
