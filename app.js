@@ -200,27 +200,6 @@ const btnCsaSave = $("btnCsaSave");
 const csaMsg = $("csaMsg");
 const csaTableWrap = $("csaTableWrap");
 
-// QVI
-const qviCompanySelect = $("qviCompanySelect");
-const qviYearSelect = $("qviYearSelect");
-const qviQuarterTabs = Array.from(document.querySelectorAll(".quarter-tab"));
-const btnQviRefresh = $("btnQviRefresh");
-const qviMsg = $("qviMsg");
-const qviSearchInput = $("qviSearchInput");
-const qviTableBody = $("qviTableBody");
-const qviEmpty = $("qviEmpty");
-const qviStatScheduled = $("qviStatScheduled");
-const qviStatCompleted = $("qviStatCompleted");
-const qviStatCompletedPct = $("qviStatCompletedPct");
-const qviStatSsti = $("qviStatSsti");
-const qviStatSstiPct = $("qviStatSstiPct");
-const qviStatRemaining = $("qviStatRemaining");
-const qviProgressQviBar = $("qviProgressQviBar");
-const qviProgressQviText = $("qviProgressQviText");
-const qviProgressSstiBar = $("qviProgressSstiBar");
-const qviProgressSstiText = $("qviProgressSstiText");
-const qviStatusSnapshot = $("qviStatusSnapshot");
-
 const companyName = $("companyName");
 const btnCompanyAdd = $("btnCompanyAdd");
 const companyList = $("companyList");
@@ -251,11 +230,6 @@ let currentCsaReportId = null;
 let currentCsaValuesByDate = {};
 let currentCsaDays = [];
 let csaTotalsTds = [];
-
-// QVI
-let qviSelectedQuarter = "QTR1";
-let qviVehiclesCache = [];
-let qviInspectionsCache = [];
 
 /* -------------------------------
    UI helpers
@@ -406,154 +380,11 @@ function setTab(tab) {
   show($("panel-csa"), tab === "csa");
   show($("panel-qvi"), tab === "qvi");
   show($("panel-admin"), tab === "admin");
-}
 
-
-function formatPct(n) {
-  const num = Number(n) || 0;
-  return `${num.toFixed(1)}%`;
-}
-
-function setQuarterTabUI() {
-  qviQuarterTabs.forEach(btn => btn.classList.toggle("active", btn.dataset.quarter === qviSelectedQuarter));
-}
-
-function populateQviYearSelect() {
-  if (!qviYearSelect || qviYearSelect.options.length) return;
-  const thisYear = new Date().getFullYear();
-  for (let y = thisYear + 1; y >= thisYear - 2; y--) {
-    const opt = document.createElement("option");
-    opt.value = String(y);
-    opt.textContent = String(y);
-    if (y === thisYear) opt.selected = true;
-    qviYearSelect.appendChild(opt);
+  if (tab === "qvi") {
+    try { initQviUi(); } catch {}
+    try { loadQviDashboard(); } catch (e) { console.error(e); }
   }
-}
-
-function populateQviCompanySelect() {
-  if (!qviCompanySelect) return;
-  const current = qviCompanySelect.value;
-  qviCompanySelect.innerHTML = '<option value="">All companies</option>';
-
-  for (const c of companiesCache || []) {
-    if (!c?.active) continue;
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    opt.textContent = c.name || c.id;
-    qviCompanySelect.appendChild(opt);
-  }
-
-  if (current) qviCompanySelect.value = current;
-}
-
-function qviMatchesSearch(row) {
-  const q = (qviSearchInput?.value || "").trim().toLowerCase();
-  if (!q) return true;
-  return [
-    row.entityName,
-    row.unitType,
-    row.vehicleNumber,
-    row.quarter,
-    row.inspectedBy,
-    row.notes
-  ].join(" ").toLowerCase().includes(q);
-}
-
-function quarterRecordForVehicle(vehicle, inspection) {
-  const quarter = qviSelectedQuarter;
-  return {
-    entityName: vehicle?.entityName || "",
-    unitType: vehicle?.unitType || "",
-    vehicleNumber: vehicle?.vehicleNumber || vehicle?.id || "",
-    quarter,
-    inspectionDate: inspection?.inspectionDate || "",
-    inspectedBy: inspection?.inspectedBy || "",
-    outOfService: Boolean(inspection?.outOfService),
-    qviComplete: Boolean(inspection?.qviComplete),
-    sstiComplete: Boolean(inspection?.sstiComplete),
-    notes: inspection?.notes || ""
-  };
-}
-
-function qviTag(text, yes) {
-  return `<span class="qvi-tag ${yes ? "yes" : "no"}">${text}</span>`;
-}
-
-function renderQviStatusSnapshot(stats) {
-  if (!qviStatusSnapshot) return;
-  const rows = [
-    ["QVI Completed", stats.completedPct],
-    ["SSTI Completed", stats.sstiPct],
-    ["Remaining", stats.remainingPct]
-  ];
-
-  qviStatusSnapshot.innerHTML = rows.map(([label, pct]) => `
-    <div class="qvi-status-row">
-      <div class="qvi-status-top">
-        <span class="qvi-status-label">${label}</span>
-        <strong>${formatPct(pct)}</strong>
-      </div>
-      <div class="progress-track"><div class="progress-fill ${label.includes("SSTI") ? "alt" : ""}" style="width:${Math.max(0, Math.min(100, pct))}%"></div></div>
-    </div>
-  `).join("");
-}
-
-function renderQviDashboard(rows) {
-  const scheduled = rows.length;
-  const completed = rows.filter(r => r.qviComplete).length;
-  const ssti = rows.filter(r => r.sstiComplete).length;
-  const remaining = Math.max(0, scheduled - completed);
-  const completedPct = scheduled ? (completed / scheduled) * 100 : 0;
-  const sstiPct = scheduled ? (ssti / scheduled) * 100 : 0;
-  const remainingPct = scheduled ? (remaining / scheduled) * 100 : 0;
-
-  if (qviStatScheduled) qviStatScheduled.textContent = String(scheduled);
-  if (qviStatCompleted) qviStatCompleted.textContent = String(completed);
-  if (qviStatCompletedPct) qviStatCompletedPct.textContent = `${formatPct(completedPct)} complete`;
-  if (qviStatSsti) qviStatSsti.textContent = String(ssti);
-  if (qviStatSstiPct) qviStatSstiPct.textContent = `${formatPct(sstiPct)} complete`;
-  if (qviStatRemaining) qviStatRemaining.textContent = String(remaining);
-  if (qviProgressQviBar) qviProgressQviBar.style.width = `${completedPct}%`;
-  if (qviProgressQviText) qviProgressQviText.textContent = formatPct(completedPct);
-  if (qviProgressSstiBar) qviProgressSstiBar.style.width = `${sstiPct}%`;
-  if (qviProgressSstiText) qviProgressSstiText.textContent = formatPct(sstiPct);
-
-  renderQviStatusSnapshot({ completedPct, sstiPct, remainingPct });
-}
-
-function renderQviTable() {
-  if (!qviTableBody) return;
-
-  const companyId = qviCompanySelect?.value || "";
-  const year = Number(qviYearSelect?.value || new Date().getFullYear());
-
-  const vehicles = (qviVehiclesCache || []).filter(v => v?.active !== false).filter(v => !companyId || v.companyId === companyId);
-  const inspections = (qviInspectionsCache || []).filter(i => Number(i?.year) === year).filter(i => (i?.quarter || "") === qviSelectedQuarter).filter(i => !companyId || i.companyId === companyId);
-
-  const byVehicle = new Map(inspections.map(i => [String(i.vehicleNumber || i.id || ""), i]));
-  const rows = vehicles.map(v => quarterRecordForVehicle(v, byVehicle.get(String(v.vehicleNumber || v.id || "")))).filter(qviMatchesSearch);
-
-  renderQviDashboard(rows);
-  qviTableBody.innerHTML = "";
-
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${row.entityName || ""}</td>
-      <td>${row.unitType || ""}</td>
-      <td><strong>${row.vehicleNumber || ""}</strong></td>
-      <td>${row.quarter}</td>
-      <td>${row.inspectionDate || "—"}</td>
-      <td>${row.inspectedBy || "—"}</td>
-      <td>${qviTag(row.outOfService ? "Yes" : "No", row.outOfService)}</td>
-      <td>${qviTag(row.qviComplete ? "Yes" : "No", row.qviComplete)}</td>
-      <td>${qviTag(row.sstiComplete ? "Yes" : "No", row.sstiComplete)}</td>
-      <td>${row.notes || "—"}</td>
-    `;
-    qviTableBody.appendChild(tr);
-  }
-
-  show(qviEmpty, rows.length === 0);
 }
 
 /* -------------------------------
@@ -578,22 +409,6 @@ async function requireAllowedUser(user) {
 -------------------------------- */
 allTabs.forEach(btn => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
-});
-
-qviQuarterTabs.forEach(btn => {
-  btn.addEventListener("click", () => {
-    qviSelectedQuarter = btn.dataset.quarter || "QTR1";
-    setQuarterTabUI();
-    renderQviTable();
-  });
-});
-
-qviCompanySelect?.addEventListener("change", renderQviTable);
-qviYearSelect?.addEventListener("change", renderQviTable);
-qviSearchInput?.addEventListener("input", renderQviTable);
-btnQviRefresh?.addEventListener("click", () => {
-  setMsg(qviMsg, "QVI layout is ready. Firestore data wiring comes in the next step.", "ok");
-  renderQviTable();
 });
 
 /* -------------------------------
@@ -1614,8 +1429,6 @@ onAuthStateChanged(auth, async (user) => {
 
     currentUser = user;
     setRole(res.role);
-    populateQviYearSelect();
-    setQuarterTabUI();
     if (userPill) userPill.textContent = `${user.email} • ${res.role}`;
     setSignedInUI(true);
 
@@ -1639,96 +1452,303 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// ============================
-// QVI VEHICLE LOADER
-// ============================
 
+/* -------------------------------
+   QVI Dashboard
+-------------------------------- */
+const panelQvi = $("panel-qvi");
+const qviMsg = $("qviMsg");
+const qviCompanySelect = $("qviCompanySelect");
+const qviYearSelect = $("qviYearSelect");
+const qviQuarterTabs = Array.from(document.querySelectorAll(".quarter-tab"));
+const btnQviRefresh = $("btnQviRefresh");
+const qviSearchInput = $("qviSearchInput");
+const qviTableBody = $("qviTableBody");
+const qviEmpty = $("qviEmpty");
+
+const qviStatScheduled = $("qviStatScheduled");
+const qviStatCompleted = $("qviStatCompleted");
+const qviStatCompletedPct = $("qviStatCompletedPct");
+const qviStatSsti = $("qviStatSsti");
+const qviStatSstiPct = $("qviStatSstiPct");
+const qviStatRemaining = $("qviStatRemaining");
+
+const qviProgressQviText = $("qviProgressQviText");
+const qviProgressQviBar = $("qviProgressQviBar");
+const qviProgressSstiText = $("qviProgressSstiText");
+const qviProgressSstiBar = $("qviProgressSstiBar");
+const qviStatusSnapshot = $("qviStatusSnapshot");
+
+const vehicleNumberInput = $("vehicle-number-input");
+const entityNameInput = $("entity-name-input");
+const unitTypeInput = $("unit-type-input");
+const addVehicleBtn = $("add-vehicle-btn");
+const vehicleMsg = $("vehicleMsg");
+
+let qviInitialized = false;
 let qviQuarter = "QTR1";
-let qviYear = new Date().getFullYear();
+let qviYear = String(new Date().getFullYear());
+let qviVehiclesCache = [];
+let qviInspectionsCache = [];
 
-async function loadQviVehicles() {
+function qviDocId(vehicleNumber, year, quarter) {
+  return `${String(vehicleNumber).trim()}_${year}_${quarter}`;
+}
+function qviPct(num, den) {
+  if (!den) return 0;
+  return Math.max(0, Math.min(100, (num / den) * 100));
+}
+function qviFmtPct(n) {
+  return `${Number(n || 0).toFixed(1)}%`;
+}
+function qviEscape(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function qviMatchesSearch(row) {
+  const q = (qviSearchInput?.value || "").trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    row.entityName, row.unitType, row.vehicleNumber, row.inspectedBy, row.notes
+  ].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+function initQviUi() {
+  if (qviInitialized) return;
+  qviInitialized = true;
 
-  const tableBody = document.getElementById("qvi-table-body");
-  if (!tableBody) return;
+  if (qviYearSelect && !qviYearSelect.options.length) {
+    const current = new Date().getFullYear();
+    for (let y = current - 1; y <= current + 2; y++) {
+      const opt = document.createElement("option");
+      opt.value = String(y);
+      opt.textContent = String(y);
+      if (y === current) opt.selected = true;
+      qviYearSelect.appendChild(opt);
+    }
+    qviYear = qviYearSelect.value || String(current);
+  }
 
-  tableBody.innerHTML = "";
-
-  const snapshot = await db.collection("qviVehicles")
-    .where("active","==",true)
-    .get();
-
-  snapshot.forEach(doc => {
-
-    const vehicle = doc.data();
-
-    const row = document.createElement("tr");
-
-    row.innerHTML = `
-      <td>${vehicle.entityName || ""}</td>
-      <td>${vehicle.unitType || ""}</td>
-      <td>${vehicle.vehicleNumber || doc.id}</td>
-      <td>${qviQuarter}</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td></td>
-    `;
-
-    tableBody.appendChild(row);
-
+  qviQuarterTabs.forEach(btn => {
+    btn.addEventListener("click", () => {
+      qviQuarterTabs.forEach(b => b.classList.toggle("active", b === btn));
+      qviQuarter = btn.dataset.quarter || "QTR1";
+      loadQviDashboard();
+    });
   });
 
+  qviYearSelect?.addEventListener("change", () => {
+    qviYear = qviYearSelect.value || String(new Date().getFullYear());
+    loadQviDashboard();
+  });
+
+  qviCompanySelect?.addEventListener("change", () => loadQviDashboard());
+  qviSearchInput?.addEventListener("input", () => renderQviTable());
+  btnQviRefresh?.addEventListener("click", () => loadQviDashboard());
+
+  addVehicleBtn?.addEventListener("click", async () => {
+    if (currentRole !== "management") {
+      alert("Only management can add vehicles.");
+      return;
+    }
+
+    const vehicleNumber = (vehicleNumberInput?.value || "").trim();
+    const entityName = (entityNameInput?.value || "").trim();
+    const unitType = unitTypeInput?.value || "P&D";
+    const companyId = (qviCompanySelect?.value || "").trim();
+
+    if (!vehicleNumber || !entityName) {
+      setMsg(vehicleMsg, "Enter vehicle number and entity name.", "err");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "qviVehicles", vehicleNumber), {
+        vehicleNumber,
+        entityName,
+        unitType,
+        companyId: companyId || "",
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+
+      if (vehicleNumberInput) vehicleNumberInput.value = "";
+      if (entityNameInput) entityNameInput.value = "";
+      if (unitTypeInput) unitTypeInput.value = "P&D";
+
+      setMsg(vehicleMsg, "Vehicle added successfully.", "ok");
+      await loadQviDashboard();
+    } catch (error) {
+      console.error("Add vehicle failed:", error);
+      setMsg(vehicleMsg, "Error adding vehicle: " + (error?.message || error), "err");
+      alert("Error adding vehicle");
+    }
+  });
 }
 
-
-// load vehicles when dashboard opens
-setTimeout(() => {
-  loadQviVehicles();
-}, 1500);
-
-
-// ============================
-// ADD VEHICLE
-// ============================
-
-document.getElementById("add-vehicle-btn")?.addEventListener("click", async () => {
-
-  const vehicleNumber = document.getElementById("vehicle-number-input").value.trim();
-  const entityName = document.getElementById("entity-name-input").value.trim();
-  const unitType = document.getElementById("unit-type-input").value;
-
-  if (!vehicleNumber || !entityName) {
-    alert("Please enter vehicle number and entity name");
-    return;
-  }
+async function loadQviDashboard() {
+  if (!panelQvi || panelQvi.classList.contains("hidden")) return;
+  initQviUi();
+  setMsg(qviMsg, "", "");
 
   try {
+    const companyFilter = (qviCompanySelect?.value || "").trim();
 
-    await db.collection("qviVehicles").doc(vehicleNumber).set({
-
-      vehicleNumber: vehicleNumber,
-      entityName: entityName,
-      unitType: unitType,
-      active: true,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-
+    const vehiclesSnap = await getDocs(query(collection(db, "qviVehicles"), where("active", "==", true)));
+    qviVehiclesCache = vehiclesSnap.docs.map(d => {
+      const v = d.data() || {};
+      return {
+        id: d.id,
+        vehicleNumber: v.vehicleNumber || d.id,
+        entityName: v.entityName || "",
+        unitType: v.unitType || "",
+        companyId: v.companyId || "",
+        active: v.active !== false
+      };
     });
 
-    document.getElementById("vehicle-number-input").value = "";
-    document.getElementById("entity-name-input").value = "";
+    const inspSnap = await getDocs(query(
+      collection(db, "qviInspections"),
+      where("year", "==", Number(qviYear)),
+      where("quarter", "==", qviQuarter)
+    ));
+    qviInspectionsCache = inspSnap.docs.map(d => {
+      const x = d.data() || {};
+      return {
+        id: d.id,
+        vehicleNumber: x.vehicleNumber || "",
+        entityName: x.entityName || "",
+        unitType: x.unitType || "",
+        companyId: x.companyId || "",
+        inspectionDate: x.inspectionDate || "",
+        inspectedBy: x.inspectedBy || "",
+        outOfService: !!x.outOfService,
+        qviComplete: !!x.qviComplete,
+        sstiComplete: !!x.sstiComplete,
+        notes: x.notes || ""
+      };
+    });
 
-    alert("Vehicle added successfully");
+    fillQviCompanies();
+    renderQviDashboard(companyFilter);
+  } catch (e) {
+    console.error(e);
+    setMsg(qviMsg, "QVI load failed: " + (e?.message || e), "err");
+  }
+}
 
-    loadQviVehicles();
+function fillQviCompanies() {
+  if (!qviCompanySelect) return;
+  const current = qviCompanySelect.value || "";
+  const names = new Set();
 
-  } catch (error) {
-
-    console.error(error);
-    alert("Error adding vehicle");
-
+  for (const c of companiesCache) {
+    const name = c.name || c.id || "";
+    if (name) names.add(name);
+  }
+  for (const v of qviVehiclesCache) {
+    if (v.companyId) names.add(v.companyId);
   }
 
-});
+  const arr = Array.from(names).sort((a,b)=>a.localeCompare(b));
+  qviCompanySelect.innerHTML = `<option value="">All companies</option>` +
+    arr.map(name => `<option value="${qviEscape(name)}">${qviEscape(name)}</option>`).join("");
+
+  qviCompanySelect.value = arr.includes(current) ? current : "";
+}
+
+function renderQviDashboard(companyFilter = "") {
+  const vehicles = qviVehiclesCache.filter(v => !companyFilter || v.companyId === companyFilter);
+  const inspectionByVehicle = new Map(
+    qviInspectionsCache.map(x => [String(x.vehicleNumber), x])
+  );
+
+  const rows = vehicles.map(v => {
+    const hit = inspectionByVehicle.get(String(v.vehicleNumber)) || {};
+    return {
+      entityName: hit.entityName || v.entityName || "",
+      unitType: hit.unitType || v.unitType || "",
+      vehicleNumber: v.vehicleNumber,
+      quarter: qviQuarter,
+      inspectionDate: hit.inspectionDate || "",
+      inspectedBy: hit.inspectedBy || "",
+      outOfService: !!hit.outOfService,
+      qviComplete: !!hit.qviComplete,
+      sstiComplete: !!hit.sstiComplete,
+      notes: hit.notes || ""
+    };
+  });
+
+  const scheduled = rows.length;
+  const completed = rows.filter(r => r.qviComplete).length;
+  const sstiCompleted = rows.filter(r => r.sstiComplete).length;
+  const remaining = Math.max(0, scheduled - completed);
+
+  const qviPercent = qviPct(completed, scheduled);
+  const sstiPercent = qviPct(sstiCompleted, scheduled);
+  const remainingPercent = qviPct(remaining, scheduled);
+
+  if (qviStatScheduled) qviStatScheduled.textContent = String(scheduled);
+  if (qviStatCompleted) qviStatCompleted.textContent = String(completed);
+  if (qviStatCompletedPct) qviStatCompletedPct.textContent = `${qviFmtPct(qviPercent)} complete`;
+  if (qviStatSsti) qviStatSsti.textContent = String(sstiCompleted);
+  if (qviStatSstiPct) qviStatSstiPct.textContent = `${qviFmtPct(sstiPercent)} complete`;
+  if (qviStatRemaining) qviStatRemaining.textContent = String(remaining);
+
+  if (qviProgressQviText) qviProgressQviText.textContent = qviFmtPct(qviPercent);
+  if (qviProgressQviBar) qviProgressQviBar.style.width = `${qviPercent}%`;
+  if (qviProgressSstiText) qviProgressSstiText.textContent = qviFmtPct(sstiPercent);
+  if (qviProgressSstiBar) qviProgressSstiBar.style.width = `${sstiPercent}%`;
+
+  if (qviStatusSnapshot) {
+    qviStatusSnapshot.innerHTML = `
+      <div class="qvi-progress-block">
+        <div class="qvi-progress-head"><span>QVI Completed</span><strong>${qviFmtPct(qviPercent)}</strong></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${qviPercent}%"></div></div>
+      </div>
+      <div class="qvi-progress-block">
+        <div class="qvi-progress-head"><span>SSTI Completed</span><strong>${qviFmtPct(sstiPercent)}</strong></div>
+        <div class="progress-track"><div class="progress-fill alt" style="width:${sstiPercent}%"></div></div>
+      </div>
+      <div class="qvi-progress-block">
+        <div class="qvi-progress-head"><span>Remaining</span><strong>${qviFmtPct(remainingPercent)}</strong></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${remainingPercent}%"></div></div>
+      </div>
+    `;
+  }
+
+  window.__qviRows = rows;
+  renderQviTable();
+}
+
+function renderQviTable() {
+  if (!qviTableBody) return;
+  const rows = (window.__qviRows || []).filter(qviMatchesSearch);
+  qviTableBody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${qviEscape(r.entityName)}</td>
+      <td>${qviEscape(r.unitType)}</td>
+      <td>${qviEscape(r.vehicleNumber)}</td>
+      <td>${qviEscape(r.quarter)}</td>
+      <td>${qviEscape(r.inspectionDate || "-")}</td>
+      <td>${qviEscape(r.inspectedBy || "-")}</td>
+      <td>${r.outOfService ? "Yes" : "-"}</td>
+      <td>${r.qviComplete ? "Yes" : "-"}</td>
+      <td>${r.sstiComplete ? "Yes" : "-"}</td>
+      <td>${qviEscape(r.notes || "")}</td>
+    </tr>
+  `).join("");
+
+  show(qviEmpty, rows.length === 0);
+}
+
+// keep QVI companies fresh when companies collection changes
+const __origStartCompaniesListener = startCompaniesListener;
+startCompaniesListener = function(...args) {
+  const out = __origStartCompaniesListener.apply(this, args);
+  try { fillQviCompanies(); } catch {}
+  return out;
+};
