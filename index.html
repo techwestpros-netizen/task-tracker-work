@@ -7,22 +7,21 @@
 <link rel="stylesheet" href="styles.css" />
 <meta name="color-scheme" content="light dark">
 </head>
-
 <body>
 
 <header class="topbar">
-<div class="brand">
-<div class="logo">✓</div>
-<div>
-<div class="brand-title">Task Tracker</div>
-<div class="brand-sub">Firebase (Allow-list) • Management + Regular users</div>
-</div>
-</div>
+  <div class="brand">
+    <div class="logo">✓</div>
+    <div>
+      <div class="brand-title">Task Tracker</div>
+      <div class="brand-sub">Firebase (Allow-list) • Management + Regular users</div>
+    </div>
+  </div>
 
-<div class="topbar-right">
-<div id="userPill" class="pill hidden"></div>
-<button id="btnSignOut" class="btn hidden">Sign out</button>
-</div>
+  <div class="topbar-right">
+    <div id="userPill" class="pill hidden"></div>
+    <button id="btnSignOut" class="btn hidden">Sign out</button>
+  </div>
 </header>
 
 <main class="container">
@@ -32,7 +31,6 @@
 <p class="muted">Your email must be on the allow-list to use this app.</p>
 
 <div class="grid2">
-
 <div class="field">
 <label>Email</label>
 <input id="authEmail" type="email" placeholder="you@example.com"/>
@@ -42,7 +40,6 @@
 <label>Password</label>
 <input id="authPassword" type="password" placeholder="••••••••"/>
 </div>
-
 </div>
 
 <div class="row">
@@ -55,10 +52,10 @@
 <div id="authMsg" class="msg hidden"></div>
 </section>
 
+
 <section id="appShell" class="hidden">
 
 <section class="card toolbar">
-
 <div class="tabs">
 <button class="tab active" data-tab="open">Open</button>
 <button class="tab" data-tab="history">History</button>
@@ -70,13 +67,11 @@
 <div class="search">
 <input id="searchInput" type="search" placeholder="Search tasks..." />
 </div>
-
 </section>
 
+
 <!-- OPEN -->
-
 <section id="panel-open" class="card panel">
-
 <div class="panel-head">
 <h2>Open tasks</h2>
 <div class="panel-actions">
@@ -86,13 +81,11 @@
 
 <div id="openList" class="list"></div>
 <div id="openEmpty" class="empty hidden">No open tasks.</div>
-
 </section>
 
+
 <!-- HISTORY -->
-
 <section id="panel-history" class="card panel hidden">
-
 <div class="panel-head">
 <h2>History</h2>
 <div class="panel-actions">
@@ -102,52 +95,19 @@
 
 <div id="historyList" class="list"></div>
 <div id="historyEmpty" class="empty hidden">No completed tasks yet.</div>
-
 </section>
 
-<!-- CSA SUMMARY -->
 
+<!-- CSA -->
 <section id="panel-csa" class="card panel hidden">
-
 <div class="panel-head">
 <h2>CSA Summary</h2>
-<div class="panel-actions">
-<span class="pill">Reports</span>
 </div>
-</div>
-
-<div class="row wrap">
-
-<div class="field">
-<label>Company</label>
-<select id="csaCompanySelect"></select>
-</div>
-
-<div class="field">
-<label>Start date</label>
-<input id="csaStartDate" type="date"/>
-</div>
-
-<div class="field">
-<label>End date</label>
-<input id="csaEndDate" type="date"/>
-</div>
-
-<div class="row">
-<button id="btnCsaLoad" class="btn">Load</button>
-<button id="btnCsaCreate" class="btn hidden">Create report</button>
-<button id="btnCsaSave" class="btn primary hidden">Save</button>
-</div>
-
-</div>
-
-<div id="csaMsg" class="msg hidden"></div>
 <div id="csaTableWrap" class="table-wrap"></div>
-
 </section>
 
-<!-- QVI DASHBOARD -->
 
+<!-- QVI DASHBOARD -->
 <section id="panel-qvi" class="card panel hidden">
 
 <div class="panel-head">
@@ -155,7 +115,6 @@
 </div>
 
 <div class="qvi-stat-grid">
-
 <div class="qvi-stat-card">
 <div class="qvi-stat-label">Total Scheduled</div>
 <div id="qviStatScheduled" class="qvi-stat-value">0</div>
@@ -175,94 +134,12 @@
 <div class="qvi-stat-label">Remaining</div>
 <div id="qviStatRemaining" class="qvi-stat-value">0</div>
 </div>
-
 </div>
 
-<div class="table-wrap">
-
-<table class="qvi-table">
-
-<thead>
-
-<tr>
-<th>Entity Name</th>
-<th>Unit Type</th>
-<th>Vehicle Number</th>
-<th>Quarter</th>
-<th>Inspection Date</th>
-<th>Inspected By</th>
-<th>Out of Service</th>
-<th>QVI Complete</th>
-<th>SSTI Complete</th>
-<th>Notes</th>
-</tr>
-
-</thead>
-
-<tbody id="qviTableBody"></tbody>
-
-</table>
-
-</div>
-
-</section>
-
-<!-- MANAGEMENT -->
-
-<section id="panel-admin" class="card panel hidden">
-
-<div class="panel-head">
-<h2>Management</h2>
-<div class="panel-actions">
-<span class="pill">Allow-list</span>
-</div>
-</div>
-
-<div class="grid2">
-
-<div class="card inner">
-
-<h3>Allow an email</h3>
-
-<div class="field">
-<label>Email</label>
-<input id="allowEmail" type="email"/>
-</div>
-
-<div class="field">
-<label>Role</label>
-<select id="allowRole">
-<option value="user">Regular user</option>
-<option value="management">Management</option>
-</select>
-</div>
-
-<div class="row">
-<button id="btnAllowAdd" class="btn primary">Add / Update</button>
-<button id="btnAllowRemove" class="btn danger">Remove</button>
-</div>
-
-<div id="adminMsg" class="msg hidden"></div>
-
-</div>
-
-<div class="card inner">
-
-<h3>Allowed users</h3>
-
-<div id="allowedList" class="list compact"></div>
-<div id="allowedEmpty" class="empty hidden">No allowed users found.</div>
-
-</div>
-
-</div>
 
 <!-- VEHICLE MANAGER -->
-
 <div class="card inner" style="margin-top:20px;">
-
-<h3>Vehicle Manager</h3>
-<p class="muted">Add vehicles used for Quarterly Vehicle Inspections.</p>
+<h3>Add Vehicle</h3>
 
 <div class="field">
 <label>Vehicle Number</label>
@@ -287,13 +164,47 @@
 <div class="row">
 <button id="add-vehicle-btn" class="btn primary">Add Vehicle</button>
 </div>
+</div>
 
+
+<div class="panel-head qvi-table-head">
+<h3>Vehicle Inspection Records</h3>
+</div>
+
+<div class="table-wrap">
+<table class="qvi-table">
+<thead>
+<tr>
+<th>Entity Name</th>
+<th>Unit Type</th>
+<th>Vehicle Number</th>
+<th>Quarter</th>
+<th>Inspection Date</th>
+<th>Inspected By</th>
+<th>Out of Service</th>
+<th>QVI Complete</th>
+<th>SSTI Complete</th>
+<th>Notes</th>
+</tr>
+</thead>
+
+<tbody id="qviTableBody"></tbody>
+
+</table>
 </div>
 
 </section>
 
+
+<!-- MANAGEMENT -->
+<section id="panel-admin" class="card panel hidden">
+<div class="panel-head">
+<h2>Management</h2>
+</div>
+<p class="muted">User allow‑list and admin tools.</p>
 </section>
 
+</section>
 </main>
 
 <footer class="footer">
