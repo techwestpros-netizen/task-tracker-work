@@ -1638,3 +1638,52 @@ onAuthStateChanged(auth, async (user) => {
     setMsg(authMsg, "Sign-in blocked: " + (e?.message || e), "err");
   }
 });
+
+// ============================
+// QVI VEHICLE LOADER
+// ============================
+
+let qviQuarter = "QTR1";
+let qviYear = new Date().getFullYear();
+
+async function loadQviVehicles() {
+
+  const tableBody = document.getElementById("qvi-table-body");
+  if (!tableBody) return;
+
+  tableBody.innerHTML = "";
+
+  const snapshot = await db.collection("qviVehicles")
+    .where("active","==",true)
+    .get();
+
+  snapshot.forEach(doc => {
+
+    const vehicle = doc.data();
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td>${vehicle.entityName || ""}</td>
+      <td>${vehicle.unitType || ""}</td>
+      <td>${vehicle.vehicleNumber || doc.id}</td>
+      <td>${qviQuarter}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td></td>
+    `;
+
+    tableBody.appendChild(row);
+
+  });
+
+}
+
+
+// load vehicles when dashboard opens
+setTimeout(() => {
+  loadQviVehicles();
+}, 1500);
