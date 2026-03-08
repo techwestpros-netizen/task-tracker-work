@@ -1687,3 +1687,48 @@ async function loadQviVehicles() {
 setTimeout(() => {
   loadQviVehicles();
 }, 1500);
+
+
+// ============================
+// ADD VEHICLE
+// ============================
+
+document.getElementById("add-vehicle-btn")?.addEventListener("click", async () => {
+
+  const vehicleNumber = document.getElementById("vehicle-number-input").value.trim();
+  const entityName = document.getElementById("entity-name-input").value.trim();
+  const unitType = document.getElementById("unit-type-input").value;
+
+  if (!vehicleNumber || !entityName) {
+    alert("Please enter vehicle number and entity name");
+    return;
+  }
+
+  try {
+
+    await db.collection("qviVehicles").doc(vehicleNumber).set({
+
+      vehicleNumber: vehicleNumber,
+      entityName: entityName,
+      unitType: unitType,
+      active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+
+    });
+
+    document.getElementById("vehicle-number-input").value = "";
+    document.getElementById("entity-name-input").value = "";
+
+    alert("Vehicle added successfully");
+
+    loadQviVehicles();
+
+  } catch (error) {
+
+    console.error(error);
+    alert("Error adding vehicle");
+
+  }
+
+});
