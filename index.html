@@ -71,6 +71,7 @@
           <button class="tab" data-tab="history">History</button>
           <button class="tab" data-tab="csa">CSA Summary</button>
           <button class="tab" data-tab="qvi">QVI Dashboard</button>
+          <button class="tab" data-tab="service">Service</button>
           <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
         </div>
 
@@ -328,6 +329,26 @@
       </section>
 
       <!-- ADMIN -->
+      <!-- SERVICE -->
+      <section id="panel-service" class="card panel hidden">
+        <div class="panel-head">
+          <h2>Service Dashboard</h2>
+          <div class="panel-actions">
+            <span class="pill">Power BI</span>
+          </div>
+        </div>
+
+        <div class="service-embed-wrap">
+          <iframe
+            class="service-embed"
+            role="presentation"
+            src="https://app.powerbi.com/rdlEmbed?reportId=0756d693-4795-4c3e-9dd1-751f07f68932&autoAuth=true&ctid=b945c813-dce6-41f8-8457-5a12c2fe15bf&ctid=b945c813-dce6-41f8-8457-5a12c2fe15bf&experience=power-bi"
+            frameborder="0"
+            allowfullscreen="true">
+          </iframe>
+        </div>
+      </section>
+
       <section id="panel-admin" class="card panel hidden">
         <div class="panel-head">
           <h2>Management</h2>

@@ -380,6 +380,7 @@ function setTab(tab) {
   show($("panel-history"), tab === "history");
   show($("panel-csa"), tab === "csa");
   show($("panel-qvi"), tab === "qvi");
+  show($("panel-service"), tab === "service");
   show($("panel-admin"), tab === "admin");
 
   if (tab === "qvi") {

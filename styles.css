@@ -684,3 +684,37 @@ textarea{resize:vertical; min-height:90px}
   cursor:not-allowed;
   filter:none;
 }
+
+
+/* Service tab / Power BI embed */
+.service-embed-wrap{
+  width:100%;
+  border:1px solid var(--border);
+  border-radius:18px;
+  overflow:hidden;
+  background:color-mix(in srgb, var(--card) 92%, transparent);
+  box-shadow:var(--shadow);
+}
+
+.service-embed{
+  display:block;
+  width:100%;
+  height:min(78vh, 1100px);
+  min-height:620px;
+  border:0;
+  background:#fff;
+}
+
+@media (max-width: 900px){
+  .service-embed{
+    height:72vh;
+    min-height:540px;
+  }
+}
+
+@media (max-width: 640px){
+  .service-embed{
+    height:68vh;
+    min-height:460px;
+  }
+}
