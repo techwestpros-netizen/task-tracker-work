@@ -372,6 +372,9 @@ function setRole(role) {
   show(btnCsaCreate, false); // removed: Save handles all CSA persistence
 
   show(btnCsaSave, role === "management");
+
+  show($("mdvsMgmtWrap"), role === "management");
+  show($("mdvsMappingMgmt"), role === "management");
 }
 
 function setTab(tab) {
@@ -380,12 +383,17 @@ function setTab(tab) {
   show($("panel-history"), tab === "history");
   show($("panel-csa"), tab === "csa");
   show($("panel-qvi"), tab === "qvi");
+  show($("panel-mdvs"), tab === "mdvs");
   show($("panel-service"), tab === "service");
   show($("panel-admin"), tab === "admin");
 
   if (tab === "qvi") {
     try { initQviUi(); } catch {}
     try { loadQviDashboard(); } catch (e) { console.error(e); }
+  }
+  if (tab === "mdvs") {
+    try { initMdvsUi(); } catch {}
+    try { loadMdvsDashboard(); } catch (e) { console.error(e); }
   }
 }
 
@@ -1417,6 +1425,10 @@ onAuthStateChanged(auth, async (user) => {
     unsubCompanies = null;
     companiesCache = [];
     selectedCompanyId = null;
+    mdvsRunsCache = [];
+    mdvsRowsCache = [];
+    mdvsMappingCache = [];
+    mdvsInitialized = false;
 
     return;
   }
@@ -1990,3 +2002,524 @@ startCompaniesListener = function(...args) {
   return out;
 };
 
+
+
+/* -------------------------------
+   MDVS Dashboard
+-------------------------------- */
+const MDVS_GOAL_PERCENT = 0.0006;
+
+const panelMdvs = $("panel-mdvs");
+const mdvsMsg = $("mdvsMsg");
+const mdvsMgmtWrap = $("mdvsMgmtWrap");
+const mdvsMappingMgmt = $("mdvsMappingMgmt");
+const mdvsDateInput = $("mdvsDateInput");
+const mdvsWeekInput = $("mdvsWeekInput");
+const mdvsPrevTotalInput = $("mdvsPrevTotalInput");
+const mdvsFileInput = $("mdvsFileInput");
+const btnMdvsUpload = $("btnMdvsUpload");
+const btnMdvsRefresh = $("btnMdvsRefresh");
+const mdvsUploadMeta = $("mdvsUploadMeta");
+const mdvsSearchInput = $("mdvsSearchInput");
+const mdvsViewTabs = Array.from(document.querySelectorAll('#mdvsViewTabs .mdvs-seg-btn'));
+
+const mdvsStatPrevTotal = $("mdvsStatPrevTotal");
+const mdvsStatAmount = $("mdvsStatAmount");
+const mdvsStatPercent = $("mdvsStatPercent");
+const mdvsStatGoalPkgs = $("mdvsStatGoalPkgs");
+const mdvsStatOverUnder = $("mdvsStatOverUnder");
+const mdvsStatOverUnderSub = $("mdvsStatOverUnderSub");
+const mdvsProgressText = $("mdvsProgressText");
+const mdvsProgressBar = $("mdvsProgressBar");
+const mdvsGoalState = $("mdvsGoalState");
+const mdvsTopHitters = $("mdvsTopHitters");
+
+const mdvsDailyView = $("mdvsDailyView");
+const mdvsWeeklyView = $("mdvsWeeklyView");
+const mdvsManagerBoard = $("mdvsManagerBoard");
+const mdvsIspBoard = $("mdvsIspBoard");
+const mdvsWeeklyLabel = $("mdvsWeeklyLabel");
+const mdvsWeeklyTrend = $("mdvsWeeklyTrend");
+const mdvsWeeklyManagerBoard = $("mdvsWeeklyManagerBoard");
+const mdvsWeeklyIspBoard = $("mdvsWeeklyIspBoard");
+
+const mdvsRawBody = $("mdvsRawBody");
+const mdvsRawEmpty = $("mdvsRawEmpty");
+
+const mdvsMapIspInput = $("mdvsMapIspInput");
+const mdvsMapManagerInput = $("mdvsMapManagerInput");
+const btnMdvsMapSave = $("btnMdvsMapSave");
+const btnMdvsMapDelete = $("btnMdvsMapDelete");
+const mdvsMapList = $("mdvsMapList");
+const mdvsMapEmpty = $("mdvsMapEmpty");
+
+let mdvsInitialized = false;
+let mdvsView = "daily";
+let mdvsRunsCache = [];
+let mdvsRowsCache = [];
+let mdvsMappingCache = [];
+let mdvsCurrentDaily = null;
+let mdvsCurrentWeekRows = [];
+let mdvsCurrentWeekRuns = [];
+
+function mdvsNormalize(s) {
+  return String(s || "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+function mdvsMappingId(ispName) {
+  return mdvsNormalize(ispName).replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "UNASSIGNED";
+}
+function mdvsFormatInt(n) {
+  const num = Number(n || 0);
+  return Number.isFinite(num) ? num.toLocaleString() : "0";
+}
+function mdvsFormatNumber(n, digits = 2) {
+  const num = Number(n || 0);
+  return Number.isFinite(num) ? num.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : Number(0).toFixed(digits);
+}
+function mdvsFormatPercent(frac) {
+  const num = Number(frac || 0);
+  return `${(num * 100).toFixed(4)}%`;
+}
+function mdvsStartOfWeek(dateLike) {
+  const d = dateLike instanceof Date ? new Date(dateLike) : parseDateInput(dateLike);
+  if (!d) return null;
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  out.setDate(out.getDate() - out.getDay());
+  return out;
+}
+function mdvsWeekKeyFromDate(dateLike) {
+  const s = mdvsStartOfWeek(dateLike);
+  return s ? yyyyMmDd(s) : "";
+}
+function mdvsIsoToFriendly(dateStr) {
+  if (!dateStr) return "";
+  const d = parseDateInput(dateStr);
+  if (!d) return dateStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+function mdvsEscape(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function mdvsDailySearchMatch(row) {
+  const q = (mdvsSearchInput?.value || "").trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    row.trackingIdentifier, row.ispName, row.managerName, row.workAreaNumber, row.workAreaDescription, row.vehicleCode, row.scanDatetimeText
+  ].join(" ").toLowerCase();
+  return hay.includes(q);
+}
+function mdvsBuildLeaderboard(items, label) {
+  if (!items.length) return `<div class="empty">No ${label} data yet.</div>`;
+  return items.map((item, idx) => `
+    <div class="mdvs-board-row">
+      <div class="mdvs-board-head">
+        <div>
+          <div class="mdvs-rank">#${idx + 1}</div>
+          <div class="mdvs-board-name">${mdvsEscape(item.name || "Unassigned")}</div>
+        </div>
+        <span class="badge">${mdvsFormatInt(item.amount)} pkgs</span>
+      </div>
+      <div class="mdvs-board-meta">
+        <span>${mdvsFormatPercent(item.percentOfMdvs)} of MDVS</span>
+        <span>${mdvsFormatPercent(item.percentOfTotal)} of total packages</span>
+      </div>
+    </div>
+  `).join("");
+}
+function mdvsAggregateBy(rows, keyField, previousTotalPackages) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const name = (row[keyField] || "Unassigned").trim() || "Unassigned";
+    const hit = map.get(name) || { name, amount: 0 };
+    hit.amount += 1;
+    map.set(name, hit);
+  });
+  const totalMdvs = rows.length || 0;
+  return Array.from(map.values()).map((item) => ({
+    ...item,
+    percentOfMdvs: totalMdvs ? item.amount / totalMdvs : 0,
+    percentOfTotal: previousTotalPackages ? item.amount / previousTotalPackages : 0
+  })).sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+}
+function mdvsComputeRunSummary(previousTotalPackages, mdvsAmount) {
+  const prev = Number(previousTotalPackages || 0);
+  const amt = Number(mdvsAmount || 0);
+  const totalPercent = prev > 0 ? (amt / prev) : 0;
+  const packagesToGoal = prev * MDVS_GOAL_PERCENT;
+  const overUnderAmount = amt - packagesToGoal;
+  return {
+    previousDayTotalPackages: prev,
+    mdvsAmount: amt,
+    totalPercent,
+    packagesToGoal,
+    overUnderAmount,
+    overUnderDirection: overUnderAmount > 0 ? "Over" : (overUnderAmount < 0 ? "Under" : "Even")
+  };
+}
+function mdvsRenderTopHitters(managerBoard, ispBoard) {
+  const topManager = managerBoard[0];
+  const topIsp = ispBoard[0];
+  if (!topManager && !topIsp) {
+    mdvsTopHitters.innerHTML = `<div class="empty">No MDVS data loaded.</div>`;
+    return;
+  }
+  const cards = [];
+  if (topManager) {
+    cards.push(`<div class="mdvs-hit"><strong>Top P&amp;D Manager</strong><span>${mdvsEscape(topManager.name)}</span><span class="muted">${mdvsFormatInt(topManager.amount)} packages • ${mdvsFormatPercent(topManager.percentOfMdvs)} of MDVS</span></div>`);
+  }
+  if (topIsp) {
+    cards.push(`<div class="mdvs-hit"><strong>Top ISP</strong><span>${mdvsEscape(topIsp.name)}</span><span class="muted">${mdvsFormatInt(topIsp.amount)} packages • ${mdvsFormatPercent(topIsp.percentOfMdvs)} of MDVS</span></div>`);
+  }
+  mdvsTopHitters.innerHTML = `<div class="mdvs-hit-list">${cards.join("")}</div>`;
+}
+function mdvsRenderDailyStats(run) {
+  const summary = mdvsComputeRunSummary(run?.previousDayTotalPackages || 0, run?.mdvsAmount || 0);
+  const ratioToGoal = MDVS_GOAL_PERCENT > 0 ? Math.min(200, (summary.totalPercent / MDVS_GOAL_PERCENT) * 100) : 0;
+  mdvsStatPrevTotal.textContent = mdvsFormatInt(summary.previousDayTotalPackages);
+  mdvsStatAmount.textContent = mdvsFormatInt(summary.mdvsAmount);
+  mdvsStatPercent.textContent = mdvsFormatPercent(summary.totalPercent);
+  mdvsStatGoalPkgs.textContent = mdvsFormatNumber(summary.packagesToGoal, 3);
+  mdvsStatOverUnder.textContent = `${summary.overUnderDirection}`;
+  mdvsStatOverUnderSub.textContent = `${Math.abs(summary.overUnderAmount).toFixed(3)} packages ${summary.overUnderDirection === "Even" ? "from goal" : summary.overUnderDirection.toLowerCase() + " goal"}`;
+
+  mdvsProgressText.textContent = `${mdvsFormatPercent(summary.totalPercent)} / ${(MDVS_GOAL_PERCENT * 100).toFixed(4)}%`;
+  mdvsProgressBar.style.width = `${Math.max(0, Math.min(100, ratioToGoal))}%`;
+
+  const goalGood = summary.totalPercent <= MDVS_GOAL_PERCENT;
+  mdvsGoalState.className = "mdvs-goal-state " + (goalGood ? "good" : "bad");
+  mdvsGoalState.textContent = goalGood
+    ? `Good news — this day is ${(MDVS_GOAL_PERCENT - summary.totalPercent > 0 ? mdvsFormatPercent(MDVS_GOAL_PERCENT - summary.totalPercent) : "0.0000%")} under the district goal.`
+    : `Needs attention — this day is ${mdvsFormatPercent(summary.totalPercent - MDVS_GOAL_PERCENT)} above the district goal.`;
+
+  if (mdvsUploadMeta) {
+    const uploadedAt = run?.uploadedAt?.toDate ? run.uploadedAt.toDate().toLocaleString() : fmtTime(run?.uploadedAt);
+    const who = run?.uploadedBy || "";
+    const source = run?.sourceFileName || "";
+    mdvsUploadMeta.textContent = uploadedAt || who || source
+      ? `Last upload for ${mdvsIsoToFriendly(run?.reportDate)}: ${source || "Workbook"}${who ? ` • ${who}` : ""}${uploadedAt ? ` • ${uploadedAt}` : ""}`
+      : "";
+  }
+}
+function mdvsRenderRawRows(rows) {
+  const filtered = rows.filter(mdvsDailySearchMatch);
+  mdvsRawBody.innerHTML = filtered.map((row) => `
+    <tr>
+      <td>${mdvsEscape(row.trackingIdentifier || "")}</td>
+      <td>${mdvsEscape(row.vanScans || "")}</td>
+      <td>${mdvsEscape(row.ispName || "")}</td>
+      <td>${mdvsEscape(row.managerName || "")}</td>
+      <td>${mdvsEscape(row.workAreaNumber || "")}</td>
+      <td>${mdvsEscape(row.workAreaDescription || "")}</td>
+      <td>${mdvsEscape(row.vehicleCode || "")}</td>
+      <td>${mdvsEscape(row.scanDatetimeText || "")}</td>
+    </tr>
+  `).join("");
+  show(mdvsRawEmpty, filtered.length === 0);
+}
+function mdvsRenderMapList() {
+  if (!mdvsMapList) return;
+  mdvsMapList.innerHTML = mdvsMappingCache.map((row) => `
+    <div class="mdvs-map-row">
+      <strong>${mdvsEscape(row.ispName || "")}</strong>
+      <div class="muted">${mdvsEscape(row.managerName || "Unassigned")}</div>
+    </div>
+  `).join("");
+  show(mdvsMapEmpty, mdvsMappingCache.length === 0);
+}
+function mdvsSetView(view) {
+  mdvsView = view === "weekly" ? "weekly" : "daily";
+  mdvsViewTabs.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === mdvsView));
+  show(mdvsDailyView, mdvsView === "daily");
+  show(mdvsWeeklyView, mdvsView === "weekly");
+}
+function mdvsRenderDaily() {
+  const run = mdvsCurrentDaily;
+  if (!run) {
+    mdvsRenderDailyStats({ previousDayTotalPackages: 0, mdvsAmount: 0 });
+    mdvsManagerBoard.innerHTML = `<div class="empty">No manager data for this day.</div>`;
+    mdvsIspBoard.innerHTML = `<div class="empty">No ISP data for this day.</div>`;
+    mdvsTopHitters.innerHTML = `<div class="empty">No MDVS data loaded.</div>`;
+    mdvsRenderRawRows([]);
+    return;
+  }
+
+  mdvsRenderDailyStats(run);
+  const rows = mdvsRowsCache;
+  const prevTotal = Number(run.previousDayTotalPackages || 0);
+  const managerBoard = mdvsAggregateBy(rows, "managerName", prevTotal);
+  const ispBoard = mdvsAggregateBy(rows, "ispName", prevTotal);
+  mdvsManagerBoard.innerHTML = mdvsBuildLeaderboard(managerBoard, "manager");
+  mdvsIspBoard.innerHTML = mdvsBuildLeaderboard(ispBoard, "ISP");
+  mdvsRenderTopHitters(managerBoard, ispBoard);
+  mdvsRenderRawRows(rows);
+}
+function mdvsRenderWeekly() {
+  const runs = mdvsCurrentWeekRuns.slice().sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
+  const rows = mdvsCurrentWeekRows.slice();
+
+  mdvsWeeklyLabel.textContent = mdvsWeekInput?.value ? `Week of ${mdvsIsoToFriendly(mdvsWeekInput.value)}` : "Week";
+  if (!runs.length) {
+    mdvsWeeklyTrend.innerHTML = `<div class="empty">No uploads saved for this week yet.</div>`;
+    mdvsWeeklyManagerBoard.innerHTML = `<div class="empty">No manager data for this week.</div>`;
+    mdvsWeeklyIspBoard.innerHTML = `<div class="empty">No ISP data for this week.</div>`;
+    return;
+  }
+
+  mdvsWeeklyTrend.innerHTML = runs.map((run) => {
+    const summary = mdvsComputeRunSummary(run.previousDayTotalPackages || 0, run.mdvsAmount || 0);
+    const goalGood = summary.totalPercent <= MDVS_GOAL_PERCENT;
+    return `
+      <div class="mdvs-day-card">
+        <div class="day">${mdvsEscape(mdvsIsoToFriendly(run.reportDate))}</div>
+        <div class="pct">${mdvsFormatPercent(summary.totalPercent)}</div>
+        <div class="sub">${mdvsFormatInt(summary.mdvsAmount)} MDVS • ${mdvsFormatInt(summary.previousDayTotalPackages)} total pkgs</div>
+        <div class="sub">${goalGood ? "Under goal" : "Over goal"} by ${mdvsFormatPercent(Math.abs(summary.totalPercent - MDVS_GOAL_PERCENT))}</div>
+      </div>
+    `;
+  }).join("");
+
+  const prevTotal = runs.reduce((sum, run) => sum + Number(run.previousDayTotalPackages || 0), 0);
+  mdvsWeeklyManagerBoard.innerHTML = mdvsBuildLeaderboard(mdvsAggregateBy(rows, "managerName", prevTotal), "manager");
+  mdvsWeeklyIspBoard.innerHTML = mdvsBuildLeaderboard(mdvsAggregateBy(rows, "ispName", prevTotal), "ISP");
+}
+async function mdvsLoadMappings() {
+  const snap = await getDocs(query(collection(db, "mdvsIspManagers"), orderBy("ispName", "asc")));
+  mdvsMappingCache = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  mdvsRenderMapList();
+}
+function mdvsResolveManager(rawIsp, rawManager) {
+  const normalized = mdvsNormalize(rawIsp);
+  const mapped = mdvsMappingCache.find((item) => mdvsNormalize(item.ispName) === normalized);
+  if (mapped?.managerName) return mapped.managerName;
+  return String(rawManager || "").trim() || "Unassigned";
+}
+async function mdvsDeleteExistingRowsForDate(reportDate) {
+  const snap = await getDocs(query(collection(db, "mdvsRows"), where("reportDate", "==", reportDate)));
+  if (!snap.empty) {
+    let batch = writeBatch(db);
+    let opCount = 0;
+    for (const docSnap of snap.docs) {
+      batch.delete(doc(db, "mdvsRows", docSnap.id));
+      opCount += 1;
+      if (opCount === 450) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opCount = 0;
+      }
+    }
+    if (opCount > 0) await batch.commit();
+  }
+}
+function mdvsWorkbookToObjects(workbook) {
+  const sheetNames = workbook.SheetNames || [];
+  if (!sheetNames.includes("WAMT") || !sheetNames.includes("Recent Info")) {
+    throw new Error('Workbook must include both "WAMT" and "Recent Info" tabs.');
+  }
+
+  const wamtRows = window.XLSX.utils.sheet_to_json(workbook.Sheets["WAMT"], { defval: "", raw: false });
+  const recentRows = window.XLSX.utils.sheet_to_json(workbook.Sheets["Recent Info"], { defval: "", raw: false });
+
+  const wamtMap = new Map();
+  wamtRows.forEach((row) => {
+    const wa = String(row["WA#"] || row["WA #"] || row["Work Area Number"] || "").trim();
+    const desc = String(row["CDAS Description"] || row["Description"] || "").trim();
+    if (wa) wamtMap.set(wa, desc);
+  });
+
+  const mdvsRows = recentRows
+    .map((row) => {
+      const vanScans = Number(row["Van Scans"] || 0);
+      return {
+        trackingIdentifier: String(row["Tracking Identifier"] || "").trim(),
+        vanScans,
+        ispName: String(row["ISP"] || "").trim(),
+        rawManagerName: String(row["P&D info"] || row["P&D Info"] || "").trim(),
+        workAreaNumber: String(row["Work Area Number"] || row["Work Area"] || "").trim(),
+        workAreaDescription: "",
+        vehicleCode: String(row["Vehicle Code"] || "").trim(),
+        scanDatetimeText: String(row["Scan Datetime"] || "").trim()
+      };
+    })
+    .filter((row) => row.trackingIdentifier && row.vanScans >= 4);
+
+  mdvsRows.forEach((row) => {
+    row.workAreaDescription = wamtMap.get(row.workAreaNumber) || "";
+    row.managerName = mdvsResolveManager(row.ispName, row.rawManagerName);
+  });
+
+  return { mdvsRows, wamtMap };
+}
+async function processMdvsUpload() {
+  if (currentRole !== "management") return;
+  setMsg(mdvsMsg, "", "");
+
+  try {
+    if (!window.XLSX) throw new Error("Excel parsing library did not load.");
+    const reportDate = mdvsDateInput?.value || "";
+    const prevTotal = Number(mdvsPrevTotalInput?.value || 0);
+    const file = mdvsFileInput?.files?.[0];
+
+    if (!reportDate) throw new Error("Choose the report date first.");
+    if (!file) throw new Error("Choose the .xlsx workbook first.");
+    if (!Number.isFinite(prevTotal) || prevTotal <= 0) throw new Error("Enter the previous day total packages.");
+    const buffer = await file.arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: "array" });
+    const { mdvsRows } = mdvsWorkbookToObjects(workbook);
+    const weekKey = mdvsWeekKeyFromDate(reportDate);
+    const summary = mdvsComputeRunSummary(prevTotal, mdvsRows.length);
+    const managerBoard = mdvsAggregateBy(mdvsRows, "managerName", prevTotal);
+    const ispBoard = mdvsAggregateBy(mdvsRows, "ispName", prevTotal);
+
+    await mdvsDeleteExistingRowsForDate(reportDate);
+
+    let batch = writeBatch(db);
+    let opCount = 0;
+    const flushBatch = async () => {
+      if (opCount > 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+        opCount = 0;
+      }
+    };
+
+    batch.set(doc(db, "mdvsRuns", reportDate), {
+      reportDate,
+      weekKey,
+      sourceFileName: file.name,
+      previousDayTotalPackages: summary.previousDayTotalPackages,
+      mdvsAmount: summary.mdvsAmount,
+      totalPercent: summary.totalPercent,
+      goalPercent: MDVS_GOAL_PERCENT,
+      packagesToGoal: summary.packagesToGoal,
+      overUnderAmount: summary.overUnderAmount,
+      overUnderDirection: summary.overUnderDirection,
+      uploadedAt: serverTimestamp(),
+      uploadedBy: currentUser?.email || "",
+      managerSummary: managerBoard,
+      ispSummary: ispBoard
+    }, { merge: true });
+    opCount += 1;
+
+    for (let idx = 0; idx < mdvsRows.length; idx += 1) {
+      const row = mdvsRows[idx];
+      batch.set(doc(db, "mdvsRows", `${reportDate}__${String(idx + 1).padStart(4, "0")}`), {
+        reportDate,
+        weekKey,
+        sourceFileName: file.name,
+        trackingIdentifier: row.trackingIdentifier,
+        vanScans: row.vanScans,
+        ispName: row.ispName,
+        managerName: row.managerName || "Unassigned",
+        rawManagerName: row.rawManagerName || "",
+        workAreaNumber: row.workAreaNumber || "",
+        workAreaDescription: row.workAreaDescription || "",
+        vehicleCode: row.vehicleCode || "",
+        scanDatetimeText: row.scanDatetimeText || "",
+        uploadedAt: serverTimestamp(),
+        uploadedBy: currentUser?.email || ""
+      });
+      opCount += 1;
+      if (opCount >= 450) {
+        await flushBatch();
+      }
+    }
+    await flushBatch();
+
+    setMsg(mdvsMsg, `MDVS upload processed. Saved ${mdvsRows.length} raw row(s) for ${mdvsIsoToFriendly(reportDate)}.`, "ok");
+    if (mdvsFileInput) mdvsFileInput.value = "";
+    if (mdvsWeekInput) mdvsWeekInput.value = weekKey;
+    await loadMdvsDashboard();
+  } catch (e) {
+    console.error(e);
+    setMsg(mdvsMsg, "MDVS upload failed: " + (e?.message || e), "err");
+  }
+}
+async function loadMdvsDashboard() {
+  if (!panelMdvs || panelMdvs.classList.contains("hidden")) return;
+  initMdvsUi();
+  setMsg(mdvsMsg, "", "");
+
+  try {
+    await mdvsLoadMappings();
+
+    const reportDate = mdvsDateInput?.value || yyyyMmDd(new Date());
+    const weekKey = mdvsWeekInput?.value || mdvsWeekKeyFromDate(reportDate);
+
+    const runSnap = await getDoc(doc(db, "mdvsRuns", reportDate));
+    mdvsCurrentDaily = runSnap.exists() ? { id: runSnap.id, ...(runSnap.data() || {}) } : null;
+
+    const rowsSnap = await getDocs(query(collection(db, "mdvsRows"), where("reportDate", "==", reportDate), orderBy("ispName", "asc")));
+    mdvsRowsCache = rowsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+    const weekRunsSnap = await getDocs(query(collection(db, "mdvsRuns"), where("weekKey", "==", weekKey), orderBy("reportDate", "asc")));
+    mdvsCurrentWeekRuns = weekRunsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+    const weekRowsSnap = await getDocs(query(collection(db, "mdvsRows"), where("weekKey", "==", weekKey), orderBy("reportDate", "asc")));
+    mdvsCurrentWeekRows = weekRowsSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+    mdvsRenderDaily();
+    mdvsRenderWeekly();
+  } catch (e) {
+    console.error(e);
+    setMsg(mdvsMsg, "MDVS load failed: " + (e?.message || e), "err");
+  }
+}
+function initMdvsUi() {
+  if (mdvsInitialized) return;
+  mdvsInitialized = true;
+
+  const today = yyyyMmDd(new Date());
+  if (mdvsDateInput && !mdvsDateInput.value) mdvsDateInput.value = today;
+  if (mdvsWeekInput && !mdvsWeekInput.value) mdvsWeekInput.value = mdvsWeekKeyFromDate(today);
+  mdvsSetView("daily");
+
+  mdvsViewTabs.forEach((btn) => btn.addEventListener("click", () => mdvsSetView(btn.dataset.view)));
+  mdvsDateInput?.addEventListener("change", () => {
+    if (mdvsWeekInput) mdvsWeekInput.value = mdvsWeekKeyFromDate(mdvsDateInput.value);
+    loadMdvsDashboard();
+  });
+  mdvsWeekInput?.addEventListener("change", () => loadMdvsDashboard());
+  mdvsSearchInput?.addEventListener("input", () => mdvsRenderRawRows(mdvsRowsCache));
+  btnMdvsRefresh?.addEventListener("click", () => loadMdvsDashboard());
+  btnMdvsUpload?.addEventListener("click", () => processMdvsUpload());
+
+  btnMdvsMapSave?.addEventListener("click", async () => {
+    if (currentRole !== "management") return;
+    try {
+      const ispName = (mdvsMapIspInput?.value || "").trim();
+      const managerName = (mdvsMapManagerInput?.value || "").trim();
+      if (!ispName) throw new Error("Enter an ISP name.");
+      if (!managerName) throw new Error("Enter a P&D manager name.");
+      await setDoc(doc(db, "mdvsIspManagers", mdvsMappingId(ispName)), {
+        ispName,
+        managerName,
+        active: true,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || ""
+      }, { merge: true });
+      mdvsMapIspInput.value = "";
+      mdvsMapManagerInput.value = "";
+      setMsg(mdvsMsg, "ISP mapping saved.", "ok");
+      await loadMdvsDashboard();
+    } catch (e) {
+      setMsg(mdvsMsg, "Mapping save failed: " + (e?.message || e), "err");
+    }
+  });
+
+  btnMdvsMapDelete?.addEventListener("click", async () => {
+    if (currentRole !== "management") return;
+    try {
+      const ispName = (mdvsMapIspInput?.value || "").trim();
+      if (!ispName) throw new Error("Enter the ISP name you want to remove.");
+      await deleteDoc(doc(db, "mdvsIspManagers", mdvsMappingId(ispName)));
+      mdvsMapIspInput.value = "";
+      mdvsMapManagerInput.value = "";
+      setMsg(mdvsMsg, "ISP mapping removed.", "ok");
+      await loadMdvsDashboard();
+    } catch (e) {
+      setMsg(mdvsMsg, "Mapping delete failed: " + (e?.message || e), "err");
+    }
+  });
+}

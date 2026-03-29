@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Task Tracker</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <meta name="color-scheme" content="light dark">
 </head>
 <body>
@@ -71,6 +71,7 @@
           <button class="tab" data-tab="history">History</button>
           <button class="tab" data-tab="csa">CSA Summary</button>
           <button class="tab" data-tab="qvi">QVI Dashboard</button>
+          <button class="tab" data-tab="mdvs">MDVS</button>
           <button class="tab" data-tab="service">Service</button>
           <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
         </div>
@@ -328,6 +329,215 @@
         <div id="qviEmpty" class="empty hidden">No QVI records to show yet for this quarter.</div>
       </section>
 
+
+      <!-- MDVS -->
+      <section id="panel-mdvs" class="card panel hidden">
+        <div class="panel-head">
+          <div>
+            <h2>MDVS Dashboard</h2>
+            <div class="muted">Cleaner daily + weekly tracking built from your uploaded WAMT and Recent Info workbook.</div>
+          </div>
+          <div class="panel-actions">
+            <span class="pill">District Goal 0.06%</span>
+          </div>
+        </div>
+
+        <div class="mdvs-topbar">
+          <div class="mdvs-segment" id="mdvsViewTabs">
+            <button class="mdvs-seg-btn active" data-view="daily">Daily</button>
+            <button class="mdvs-seg-btn" data-view="weekly">Weekly</button>
+          </div>
+
+          <div class="mdvs-top-controls">
+            <div class="field">
+              <label>Report date</label>
+              <input id="mdvsDateInput" type="date" />
+            </div>
+            <div class="field">
+              <label>Week of (Sunday)</label>
+              <input id="mdvsWeekInput" type="date" />
+            </div>
+            <div class="field mdvs-search-field">
+              <label>Search raw rows</label>
+              <input id="mdvsSearchInput" type="search" placeholder="Search ISP, manager, tracking, work area..." />
+            </div>
+          </div>
+        </div>
+
+        <div id="mdvsMgmtWrap" class="card inner mdvs-upload-card hidden">
+          <h3>Upload MDVS workbook</h3>
+          <p class="muted">Upload a single .xlsx file that includes <b>WAMT</b> and <b>Recent Info</b>. Because the uploaded tabs do not include the denominator directly, enter the previous day total packages here and the site calculates the rest.</p>
+
+          <div class="grid2">
+            <div class="field">
+              <label>Previous day's total packages</label>
+              <input id="mdvsPrevTotalInput" type="number" min="0" step="1" placeholder="35305" />
+            </div>
+            <div class="field">
+              <label>Excel workbook (.xlsx)</label>
+              <input id="mdvsFileInput" type="file" accept=".xlsx,.xlsm,.xls" />
+            </div>
+          </div>
+
+          <div class="row">
+            <button id="btnMdvsUpload" class="btn primary">Process upload</button>
+            <button id="btnMdvsRefresh" class="btn">Refresh</button>
+          </div>
+
+          <div id="mdvsUploadMeta" class="muted"></div>
+        </div>
+
+        <div id="mdvsMsg" class="msg hidden"></div>
+
+        <div class="mdvs-stat-grid">
+          <div class="mdvs-stat-card">
+            <div class="mdvs-stat-label">Previous Day Packages</div>
+            <div id="mdvsStatPrevTotal" class="mdvs-stat-value">0</div>
+            <div class="mdvs-stat-sub">Manual denominator saved with each upload</div>
+          </div>
+          <div class="mdvs-stat-card">
+            <div class="mdvs-stat-label">MDVS Amount</div>
+            <div id="mdvsStatAmount" class="mdvs-stat-value">0</div>
+            <div class="mdvs-stat-sub">Packages with 4+ van scans</div>
+          </div>
+          <div class="mdvs-stat-card">
+            <div class="mdvs-stat-label">Total Percent</div>
+            <div id="mdvsStatPercent" class="mdvs-stat-value">0.0000%</div>
+            <div class="mdvs-stat-sub">MDVS Amount / Previous Day Packages</div>
+          </div>
+          <div class="mdvs-stat-card">
+            <div class="mdvs-stat-label">Packages to Goal</div>
+            <div id="mdvsStatGoalPkgs" class="mdvs-stat-value">0</div>
+            <div class="mdvs-stat-sub">Goal threshold at 0.06%</div>
+          </div>
+          <div class="mdvs-stat-card">
+            <div class="mdvs-stat-label">Over / Under</div>
+            <div id="mdvsStatOverUnder" class="mdvs-stat-value">Even</div>
+            <div id="mdvsStatOverUnderSub" class="mdvs-stat-sub">0.00 packages from goal</div>
+          </div>
+        </div>
+
+        <div class="mdvs-visual-grid">
+          <div class="mdvs-visual-card">
+            <h3>Goal Performance</h3>
+            <div class="mdvs-progress-block">
+              <div class="mdvs-progress-head">
+                <span>MDVS % vs district goal</span>
+                <strong id="mdvsProgressText">0.0000% / 0.0600%</strong>
+              </div>
+              <div class="progress-track"><div id="mdvsProgressBar" class="progress-fill" style="width:0%"></div></div>
+            </div>
+            <div id="mdvsGoalState" class="mdvs-goal-state">Awaiting data</div>
+          </div>
+
+          <div class="mdvs-visual-card">
+            <h3>Top Hitters</h3>
+            <div id="mdvsTopHitters" class="mdvs-top-hitters empty">No MDVS data loaded.</div>
+          </div>
+        </div>
+
+        <div id="mdvsDailyView">
+          <div class="grid2">
+            <div class="card inner">
+              <div class="panel-head">
+                <h3>P&amp;D Manager Leaderboard</h3>
+                <div class="panel-actions"><span class="pill">Daily</span></div>
+              </div>
+              <div id="mdvsManagerBoard" class="mdvs-board"></div>
+            </div>
+
+            <div class="card inner">
+              <div class="panel-head">
+                <h3>ISP Leaderboard</h3>
+                <div class="panel-actions"><span class="pill">Daily</span></div>
+              </div>
+              <div id="mdvsIspBoard" class="mdvs-board"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="mdvsWeeklyView" class="hidden">
+          <div class="card inner">
+            <div class="panel-head">
+              <h3>Weekly Trend</h3>
+              <div class="panel-actions"><span id="mdvsWeeklyLabel" class="pill">Week</span></div>
+            </div>
+            <div id="mdvsWeeklyTrend" class="mdvs-week-list"></div>
+          </div>
+
+          <div class="grid2" style="margin-top:14px;">
+            <div class="card inner">
+              <div class="panel-head">
+                <h3>Weekly Manager Leaderboard</h3>
+                <div class="panel-actions"><span class="pill">Week</span></div>
+              </div>
+              <div id="mdvsWeeklyManagerBoard" class="mdvs-board"></div>
+            </div>
+
+            <div class="card inner">
+              <div class="panel-head">
+                <h3>Weekly ISP Leaderboard</h3>
+                <div class="panel-actions"><span class="pill">Week</span></div>
+              </div>
+              <div id="mdvsWeeklyIspBoard" class="mdvs-board"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:14px;">
+          <div class="card inner">
+            <div class="panel-head">
+              <h3>Raw MDVS Rows</h3>
+              <div class="panel-actions"><span class="pill">Daily</span></div>
+            </div>
+            <div class="table-wrap mdvs-raw-wrap">
+              <table class="mdvs-table">
+                <thead>
+                  <tr>
+                    <th>Tracking</th>
+                    <th>Van Scans</th>
+                    <th>ISP</th>
+                    <th>P&amp;D Manager</th>
+                    <th>Work Area</th>
+                    <th>Description</th>
+                    <th>Vehicle</th>
+                    <th>Scan Datetime</th>
+                  </tr>
+                </thead>
+                <tbody id="mdvsRawBody"></tbody>
+              </table>
+            </div>
+            <div id="mdvsRawEmpty" class="empty hidden">No MDVS raw rows for this day yet.</div>
+          </div>
+
+          <div class="card inner">
+            <div class="panel-head">
+              <h3>ISP → P&amp;D Manager Mapping</h3>
+              <div class="panel-actions"><span class="pill">Website-owned</span></div>
+            </div>
+
+            <div id="mdvsMappingMgmt" class="hidden">
+              <div class="field">
+                <label>ISP Name</label>
+                <input id="mdvsMapIspInput" type="text" placeholder="HUGHES DELIVERY SERVICE INC" />
+              </div>
+              <div class="field">
+                <label>P&amp;D Manager</label>
+                <input id="mdvsMapManagerInput" type="text" placeholder="Whitney Bridges" />
+              </div>
+              <div class="row">
+                <button id="btnMdvsMapSave" class="btn primary">Add / Update Mapping</button>
+                <button id="btnMdvsMapDelete" class="btn danger">Remove Mapping</button>
+              </div>
+            </div>
+
+            <div id="mdvsMapList" class="list compact"></div>
+            <div id="mdvsMapEmpty" class="empty hidden">No ISP mappings saved yet.</div>
+          </div>
+        </div>
+      </section>
+
+
       <!-- ADMIN -->
       <!-- SERVICE -->
       <section id="panel-service" class="card panel hidden">
@@ -426,8 +636,10 @@
     <span class="muted">Tip: Management can add tasks and manage the allow-list. Regular users can complete tasks and comment.</span>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <!-- Firebase app logic -->
-  <script type="module" src="firebase-config.js?v=1"></script>
-  <script type="module" src="app.js?v=1"></script>
+  <script type="module" src="firebase-config.js?v=2"></script>
+  <script type="module" src="app.js?v=2"></script>
 </body>
 </html>
