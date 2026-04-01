@@ -2,119 +2,75 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FedEx Barcode Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Scanner</title>
 
   <style>
     body {
       margin: 0;
       background: #0f172a;
       color: white;
-      font-family: Arial, sans-serif;
+      font-family: Arial;
       text-align: center;
-    }
-
-    h1 {
-      margin-top: 20px;
     }
 
     video {
       width: 100%;
       max-width: 500px;
+      margin-top: 20px;
       border-radius: 12px;
-      margin-top: 15px;
-      background: black;
-    }
-
-    .box {
-      border: 2px solid white;
-      width: 80%;
-      max-width: 400px;
-      height: 200px;
-      margin: 20px auto;
-      position: relative;
-    }
-
-    .line {
-      position: absolute;
-      width: 100%;
-      height: 3px;
-      background: lime;
-      animation: scan 2s infinite;
-    }
-
-    @keyframes scan {
-      0% { top: 0; }
-      50% { top: 95%; }
-      100% { top: 0; }
     }
 
     button {
       padding: 12px 20px;
+      margin-top: 15px;
       font-size: 16px;
       border: none;
       border-radius: 8px;
-      margin-top: 15px;
       background: #7c3aed;
       color: white;
-      cursor: pointer;
     }
 
     #result {
       margin-top: 20px;
       font-size: 22px;
       font-weight: bold;
-      word-break: break-word;
     }
   </style>
 </head>
 
 <body>
 
-  <h1>Live Barcode Scanner</h1>
+<h2>Barcode Scanner</h2>
 
-  <video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline></video>
 
-  <div class="box">
-    <div class="line"></div>
-  </div>
+<br>
+<button onclick="startCamera()">Open Camera</button>
 
-  <button onclick="startScanner()">Open Camera</button>
+<div id="result">Waiting...</div>
 
-  <div id="result">Waiting for scan...</div>
+<script>
+let stream;
 
-  <!-- ✅ WORKING ZXING LIBRARY -->
-  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
+async function startCamera() {
+  const video = document.getElementById("video");
 
-  <script>
-    let codeReader;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
 
-    async function startScanner() {
-      const video = document.getElementById("video");
+    video.srcObject = stream;
 
-      try {
-        codeReader = new ZXing.BrowserMultiFormatReader();
+    document.getElementById("result").innerText = 
+      "Camera working — now we add scanning next";
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }
-        });
-
-        video.srcObject = stream;
-
-        codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
-          if (result) {
-            document.getElementById("result").innerText = result.text;
-
-            // 🔊 Optional beep
-            new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play();
-          }
-        });
-
-      } catch (err) {
-        alert("Camera failed: " + err);
-      }
-    }
-  </script>
+  } catch (err) {
+    alert("Camera failed: " + err);
+  }
+}
+</script>
 
 </body>
 </html>
