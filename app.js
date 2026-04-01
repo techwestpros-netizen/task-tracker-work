@@ -20,6 +20,7 @@ let latestScan = null;
 let lastScannedValue = '';
 let lastScanTime = 0;
 let isStartingCamera = false;
+let zxingLoadPromise = null;
 
 function setScanStatus(text, type = 'neutral') {
   scanStatus.textContent = text;
@@ -35,34 +36,23 @@ function normalizeTracking(value) {
   if (!value) return null;
   const clean = String(value).trim().replace(/\s+/g, '');
   if (!clean) return null;
-
   if (/^[A-Z0-9-]{8,40}$/i.test(clean)) return clean;
   if (/\d{8,40}/.test(clean)) return clean;
-
   return null;
 }
 
 function setLatestResult(value, source = 'Barcode') {
   const finalValue = normalizeTracking(value) || value || 'N/A';
-
   latestScan = {
     id: crypto.randomUUID(),
     trackingNumber: finalValue,
     source,
     createdAt: new Date().toISOString()
   };
-
   trackingNumberEl.textContent = finalValue;
   manualTrackingInput.value = finalValue === 'N/A' ? '' : finalValue;
   saveBtn.disabled = false;
-
-  if (finalValue === 'N/A') {
-    setScanStatus('No barcode detected', 'warning');
-  } else if (source === 'Manual') {
-    setScanStatus('Manual value applied', 'success');
-  } else {
-    setScanStatus('Barcode scanned live', 'success');
-  }
+  setScanStatus(source === 'Manual' ? 'Manual value applied' : 'Barcode scanned live', 'success');
 }
 
 function clearLatest() {
@@ -74,11 +64,8 @@ function clearLatest() {
 }
 
 function loadHistory() {
-  try {
-    return JSON.parse(localStorage.getItem('liveBarcodeHistory') || '[]');
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem('liveBarcodeHistory') || '[]'); }
+  catch { return []; }
 }
 
 function saveHistory(items) {
@@ -87,12 +74,10 @@ function saveHistory(items) {
 
 function renderHistory() {
   const items = loadHistory();
-
   if (!items.length) {
     historyList.innerHTML = '<div class="history-empty">No saved scans yet.</div>';
     return;
   }
-
   historyList.innerHTML = items.map(item => `
     <div class="history-item">
       <div class="history-meta">
@@ -125,35 +110,73 @@ function applyManualValue() {
 function handleDecodedValue(rawValue) {
   const normalized = normalizeTracking(rawValue);
   if (!normalized) return;
-
   const now = Date.now();
   const isDuplicate = normalized === lastScannedValue && now - lastScanTime < 2500;
   if (isDuplicate) return;
-
   lastScannedValue = normalized;
   lastScanTime = now;
   setLatestResult(normalized, 'Barcode');
 }
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      if (existing.dataset.loaded === 'true') resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.src = src;
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensureZXingLoaded() {
+  if (window.ZXingBrowser) return;
+  if (!zxingLoadPromise) {
+    zxingLoadPromise = (async () => {
+      const sources = [
+        'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js',
+        'https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js'
+      ];
+      let lastError = null;
+      for (const src of sources) {
+        try {
+          await loadScript(src);
+          if (window.ZXingBrowser) return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error('ZXing barcode library did not load.');
+    })();
+  }
+  return zxingLoadPromise;
+}
+
 function stopReader() {
   if (currentReader && typeof currentReader.reset === 'function') {
-    try {
-      currentReader.reset();
-    } catch (error) {
-      console.warn('Reader reset failed', error);
-    }
+    try { currentReader.reset(); }
+    catch (error) { console.warn('Reader reset failed', error); }
   }
   currentReader = null;
 }
 
 function stopCamera() {
   stopReader();
-
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
   }
-
   video.srcObject = null;
   switchCameraBtn.disabled = true;
   stopCameraBtn.disabled = true;
@@ -168,22 +191,20 @@ async function startCamera() {
 
   try {
     stopCamera();
-
-    if (!window.ZXingBrowser) {
-      throw new Error('ZXing barcode library did not load.');
-    }
+    setScanStatus('Loading scanner...', 'neutral');
+    await ensureZXingLoaded();
 
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('This browser does not support camera access.');
     }
 
-    currentReader = new ZXingBrowser.BrowserMultiFormatReader();
+    currentReader = new window.ZXingBrowser.BrowserMultiFormatReader();
 
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: currentFacingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
       },
       audio: false
     });
@@ -198,10 +219,8 @@ async function startCamera() {
     setScanStatus('Scanning live...', 'neutral');
     cameraPlaceholder.classList.add('hidden');
 
-    currentReader.decodeFromVideoElementContinuously(video, (result, error) => {
-      if (result) {
-        handleDecodedValue(result.text || result.getText?.() || '');
-      }
+    currentReader.decodeFromVideoElementContinuously(video, (result) => {
+      if (result) handleDecodedValue(result.text || result.getText?.() || '');
     });
   } catch (error) {
     console.error(error);
@@ -222,7 +241,6 @@ async function switchCamera() {
 historyList.addEventListener('click', (event) => {
   const deleteId = event.target?.dataset?.deleteId;
   if (!deleteId) return;
-
   const items = loadHistory().filter(item => item.id !== deleteId);
   saveHistory(items);
   renderHistory();
@@ -240,7 +258,6 @@ stopCameraBtn.addEventListener('click', stopCamera);
 saveBtn.addEventListener('click', saveLatestScan);
 clearLatestBtn.addEventListener('click', clearLatest);
 applyManualBtn.addEventListener('click', applyManualValue);
-
 window.addEventListener('beforeunload', stopCamera);
 
 renderHistory();
