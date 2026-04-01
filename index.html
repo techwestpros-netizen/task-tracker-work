@@ -6,6 +6,7 @@
   <title>Package Scan</title>
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -15,8 +16,7 @@
         <p class="eyebrow">Phone-first package scanner</p>
         <h1>Snap a package. Pull the tracking number.</h1>
         <p class="subtext">
-          Tap the camera, take a photo, and the app will try to read the tracking number.
-          If nothing readable is found, it saves as <strong>N/A</strong>.
+          Barcode first. OCR fallback second. If nothing readable is found, it saves as <strong>N/A</strong>.
         </p>
       </div>
     </header>
@@ -61,6 +61,10 @@
             <div class="label">Tracking Number</div>
             <div id="trackingNumber" class="tracking-number">—</div>
           </div>
+
+          <label class="label" for="manualTrackingInput">Manual correction (optional)</label>
+          <input id="manualTrackingInput" class="manual-input" type="text" placeholder="Type or fix tracking number here" />
+          <button id="applyManualBtn" class="btn">Use Manual Value</button>
 
           <div class="button-row">
             <button id="saveBtn" class="btn btn-primary" disabled>Save Scan</button>
