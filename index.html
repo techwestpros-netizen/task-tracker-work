@@ -3,50 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Package Scan</title>
+  <title>Live Barcode Scanner</title>
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <header class="hero">
-      <div>
-        <p class="eyebrow">Phone-first package scanner</p>
-        <h1>Snap a package. Pull the tracking number.</h1>
-        <p class="subtext">
-          Barcode first. OCR fallback second. If nothing readable is found, it saves as <strong>N/A</strong>.
-        </p>
-      </div>
+      <p class="eyebrow">Phone-first scanner</p>
+      <h1>Point at the package barcode. Let it scan live.</h1>
+      <p class="subtext">
+        No photo step. Open the camera, aim at the barcode, and the app will try to read it live.
+        If nothing is found, it stays waiting.
+      </p>
     </header>
 
     <main class="grid">
       <section class="card">
         <div class="card-header">
-          <h2>Live Camera</h2>
-          <span id="cameraStatus" class="status-pill">Camera off</span>
+          <h2>Live Scanner</h2>
+          <span id="cameraStatus" class="status-pill neutral">Camera off</span>
         </div>
 
         <div class="camera-wrap">
           <video id="video" playsinline autoplay muted></video>
-          <canvas id="canvas" class="hidden"></canvas>
+          <div class="scan-frame">
+            <div class="scan-line"></div>
+          </div>
           <div id="cameraPlaceholder" class="camera-placeholder">
-            Camera preview will appear here
+            Open the camera and point at the barcode
           </div>
         </div>
 
         <div class="button-row">
           <button id="startCameraBtn" class="btn btn-primary">Open Camera</button>
-          <button id="captureBtn" class="btn" disabled>Take Picture</button>
           <button id="switchCameraBtn" class="btn" disabled>Switch Camera</button>
           <button id="stopCameraBtn" class="btn btn-danger" disabled>Stop</button>
         </div>
-
-        <label class="upload-label">
-          <span>or choose a photo</span>
-          <input id="fileInput" type="file" accept="image/*" capture="environment" />
-        </label>
       </section>
 
       <section class="card">
@@ -56,14 +50,13 @@
         </div>
 
         <div class="result-stack">
-          <img id="resultImage" alt="Captured package" class="result-image hidden" />
           <div class="result-box">
-            <div class="label">Tracking Number</div>
+            <div class="label">Scanned Value</div>
             <div id="trackingNumber" class="tracking-number">—</div>
           </div>
 
-          <label class="label" for="manualTrackingInput">Manual correction (optional)</label>
-          <input id="manualTrackingInput" class="manual-input" type="text" placeholder="Type or fix tracking number here" />
+          <label class="label" for="manualTrackingInput">Manual correction</label>
+          <input id="manualTrackingInput" class="manual-input" type="text" placeholder="Type tracking value if needed" />
           <button id="applyManualBtn" class="btn">Use Manual Value</button>
 
           <div class="button-row">
