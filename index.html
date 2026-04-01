@@ -1,645 +1,82 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Task Tracker</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
-  <meta name="color-scheme" content="light dark">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Package Scan</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">✓</div>
+  <div class="app-shell">
+    <header class="hero">
       <div>
-        <div class="brand-title">Task Tracker</div>
-        <div class="brand-sub">Firebase (Allow-list) • Management + Regular users</div>
+        <p class="eyebrow">Phone-first package scanner</p>
+        <h1>Snap a package. Pull the tracking number.</h1>
+        <p class="subtext">
+          Tap the camera, take a photo, and the app will try to read the tracking number.
+          If nothing readable is found, it saves as <strong>N/A</strong>.
+        </p>
       </div>
-    </div>
+    </header>
 
-    <div class="topbar-right">
-      <div id="userPill" class="pill hidden"></div>
-      <button id="btnSignOut" class="btn hidden">Sign out</button>
-    </div>
-  </header>
-
-  <main class="container">
-    <!-- AUTH -->
-    <section id="authCard" class="card auth">
-      <h1>Sign in</h1>
-      <p class="muted">
-        Your email must be on the allow-list to use this app.
-      </p>
-
-      <div class="grid2">
-        <div class="field">
-          <label>Email</label>
-          <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+    <main class="grid">
+      <section class="card">
+        <div class="card-header">
+          <h2>Live Camera</h2>
+          <span id="cameraStatus" class="status-pill">Camera off</span>
         </div>
-        <div class="field">
-          <label>Password</label>
-          <input id="authPassword" type="password" placeholder="••••••••" autocomplete="current-password" />
-        </div>
-      </div>
 
-      <div class="row">
-        <button id="btnSignIn" class="btn primary">Sign in</button>
-        <button id="btnSignUp" class="btn">Create account</button>
-        <span class="spacer"></span>
-        <button id="btnSendLink" class="btn subtle" title="Optional: passwordless email link sign-in">Sign in by email link</button>
-      </div>
-
-      <div class="hint">
-        <details>
-          <summary>First-time setup note</summary>
-          <div class="muted">
-            If you are setting up from scratch, add your own email to the allow-list as <b>management</b> in Firestore
-            (collection <code>allowedUsers</code>) before signing up.
-            See <code>README.md</code>.
+        <div class="camera-wrap">
+          <video id="video" playsinline autoplay muted></video>
+          <canvas id="canvas" class="hidden"></canvas>
+          <div id="cameraPlaceholder" class="camera-placeholder">
+            Camera preview will appear here
           </div>
-        </details>
-      </div>
-
-      <div id="authMsg" class="msg hidden"></div>
-    </section>
-
-    <!-- APP -->
-    <section id="appShell" class="hidden">
-      <section class="card toolbar">
-        <div class="tabs">
-          <button class="tab active" data-tab="open">Open</button>
-          <button class="tab" data-tab="history">History</button>
-          <button class="tab" data-tab="csa">CSA Summary</button>
-          <button class="tab" data-tab="qvi">QVI Dashboard</button>
-          <button class="tab" data-tab="mdvs">MDVS</button>
-          <button class="tab" data-tab="service">Service</button>
-          <button id="tabAdmin" class="tab hidden" data-tab="admin">Management</button>
         </div>
 
-        <div class="search">
-          <input id="searchInput" type="search" placeholder="Search tasks..." />
+        <div class="button-row">
+          <button id="startCameraBtn" class="btn btn-primary">Open Camera</button>
+          <button id="captureBtn" class="btn" disabled>Take Picture</button>
+          <button id="switchCameraBtn" class="btn" disabled>Switch Camera</button>
+          <button id="stopCameraBtn" class="btn btn-danger" disabled>Stop</button>
         </div>
+
+        <label class="upload-label">
+          <span>or choose a photo</span>
+          <input id="fileInput" type="file" accept="image/*" capture="environment" />
+        </label>
       </section>
 
-      <!-- OPEN -->
-      <section id="panel-open" class="card panel">
-        <div class="panel-head">
-          <h2>Open tasks</h2>
-          <div class="panel-actions">
-            <button id="btnNewTask" class="btn primary hidden">+ Add task</button>
-          </div>
+      <section class="card">
+        <div class="card-header">
+          <h2>Latest Result</h2>
+          <span id="scanStatus" class="status-pill neutral">Waiting</span>
         </div>
 
-        <div id="openList" class="list"></div>
-        <div id="openEmpty" class="empty hidden">No open tasks.</div>
-      </section>
-
-      <!-- HISTORY -->
-      <section id="panel-history" class="card panel hidden">
-        <div class="panel-head">
-          <h2>History</h2>
-          <div class="panel-actions">
-            <button id="btnRefreshHistory" class="btn">Refresh</button>
-          </div>
-        </div>
-
-        <div id="historyList" class="list"></div>
-        <div id="historyEmpty" class="empty hidden">No completed tasks yet.</div>
-      </section>
-
-      <!-- CSA SUMMARY -->
-      <section id="panel-csa" class="card panel hidden">
-        <div class="panel-head">
-          <h2>CSA Summary</h2>
-          <div class="panel-actions">
-            <span class="pill">Reports</span>
-          </div>
-        </div>
-
-        <div class="row wrap">
-          <div class="field">
-            <label>Company</label>
-            <select id="csaCompanySelect"></select>
+        <div class="result-stack">
+          <img id="resultImage" alt="Captured package" class="result-image hidden" />
+          <div class="result-box">
+            <div class="label">Tracking Number</div>
+            <div id="trackingNumber" class="tracking-number">—</div>
           </div>
 
-          <div class="field">
-            <label>Start date</label>
-            <!-- IMPORTANT: these IDs must match app.js -->
-            <input id="csaStartDate" type="date" />
-          </div>
-
-          <div class="field">
-            <label>End date</label>
-            <input id="csaEndDate" type="date" />
-          </div>
-
-          <div class="row">
-            <button id="btnCsaLoad" class="btn">Load</button>
-            <button id="btnCsaCreate" class="btn hidden">Create report</button>
-            <button id="btnCsaSave" class="btn primary hidden">Save</button>
-          </div>
-        </div>
-
-        <div id="csaMsg" class="msg hidden"></div>
-        <div id="csaTableWrap" class="table-wrap"></div>
-
-        <!-- Companies manager (ONLY in CSA Summary now) -->
-        <div class="grid2" style="margin-top:14px;">
-          <div class="card inner">
-            <h3>Companies</h3>
-            <p class="muted">Add companies for CSA Summary. Only active companies show in the dropdown.</p>
-
-            <div class="field">
-              <label>Company name</label>
-              <input id="companyName" type="text" placeholder="Aspire" />
-            </div>
-
-            <div class="row">
-              <button id="btnCompanyAdd" class="btn primary">Add / Update</button>
-            </div>
-
-            <div id="companyMsg" class="msg hidden"></div>
-          </div>
-
-          <div class="card inner">
-            <h3>Company list</h3>
-            <div id="companyList" class="list compact"></div>
-            <div id="companyEmpty" class="empty hidden">No companies yet.</div>
+          <div class="button-row">
+            <button id="saveBtn" class="btn btn-primary" disabled>Save Scan</button>
+            <button id="clearLatestBtn" class="btn">Clear Latest</button>
           </div>
         </div>
       </section>
 
-
-      <!-- QVI DASHBOARD -->
-      <section id="panel-qvi" class="card panel hidden">
-        <div class="panel-head">
-          <h2>Quarterly Vehicle Inspection Dashboard</h2>
-          <div class="panel-actions">
-            <span class="pill">QVI Progress</span>
-          </div>
+      <section class="card history-card">
+        <div class="card-header">
+          <h2>Scan History</h2>
+          <button id="clearHistoryBtn" class="btn btn-danger btn-small">Clear History</button>
         </div>
-
-        <div class="qvi-controls">
-          <div class="field">
-            <label>Entity</label>
-            <select id="qviEntitySelect">
-              <option value="">All entities</option>
-            </select>
-          </div>
-
-          <div class="field qvi-year-field">
-            <label>Year</label>
-            <input id="qviYearInput" type="number" min="2000" max="2100" step="1" placeholder="2026" />
-          </div>
-
-          <div class="field qvi-quarter-field">
-            <label>Quarter</label>
-            <div id="qviQuarterTabs" class="quarter-tabs">
-              <button class="quarter-tab active" data-quarter="QTR1">QTR1</button>
-              <button class="quarter-tab" data-quarter="QTR2">QTR2</button>
-              <button class="quarter-tab" data-quarter="QTR3">QTR3</button>
-              <button class="quarter-tab" data-quarter="QTR4">QTR4</button>
-            </div>
-          </div>
-
-          <div class="row qvi-toolbar-actions">
-            <button id="btnQviRefresh" class="btn">Refresh</button>
-          </div>
-        </div>
-
-        <div id="qviMsg" class="msg hidden"></div>
-
-        <div class="qvi-stat-grid">
-          <div class="qvi-stat-card">
-            <div class="qvi-stat-label">Total Scheduled</div>
-            <div id="qviStatScheduled" class="qvi-stat-value">0</div>
-            <div class="qvi-stat-sub">Active vehicles in selected entity</div>
-          </div>
-
-          <div class="qvi-stat-card">
-            <div class="qvi-stat-label">QVI Completed</div>
-            <div id="qviStatCompleted" class="qvi-stat-value">0</div>
-            <div id="qviStatCompletedPct" class="qvi-stat-sub">0.0% complete</div>
-          </div>
-
-          <div class="qvi-stat-card">
-            <div class="qvi-stat-label">SSTI Completed</div>
-            <div id="qviStatSsti" class="qvi-stat-value">0</div>
-            <div id="qviStatSstiPct" class="qvi-stat-sub">0.0% complete</div>
-          </div>
-
-          <div class="qvi-stat-card">
-            <div class="qvi-stat-label">Remaining</div>
-            <div id="qviStatRemaining" class="qvi-stat-value">0</div>
-            <div class="qvi-stat-sub">Vehicles still needing QVI</div>
-          </div>
-        </div>
-
-        <div class="qvi-visual-grid">
-          <div class="qvi-visual-card">
-            <h3>Quarter Progress</h3>
-            <div class="qvi-progress-block">
-              <div class="qvi-progress-head">
-                <span>QVI Completion</span>
-                <strong id="qviProgressQviText">0%</strong>
-              </div>
-              <div class="progress-track"><div id="qviProgressQviBar" class="progress-fill" style="width:0%"></div></div>
-            </div>
-
-            <div class="qvi-progress-block">
-              <div class="qvi-progress-head">
-                <span>SSTI Completion</span>
-                <strong id="qviProgressSstiText">0%</strong>
-              </div>
-              <div class="progress-track"><div id="qviProgressSstiBar" class="progress-fill alt" style="width:0%"></div></div>
-            </div>
-          </div>
-
-          <div class="qvi-visual-card">
-            <h3>Status Snapshot</h3>
-            <div id="qviStatusSnapshot" class="qvi-status-stack"></div>
-          </div>
-        </div>
-
-        <!-- VEHICLE MANAGER MOVED TO QVI -->
-        <div class="card inner" style="margin: 0 0 18px 0;">
-          <h3>Add Vehicle</h3>
-          <p class="muted">Add vehicles directly from the QVI Dashboard.</p>
-
-          <div class="grid2">
-            <div class="field">
-              <label>Vehicle Number</label>
-              <input id="vehicle-number-input" type="text" placeholder="14938" />
-            </div>
-
-            <div class="field">
-              <label>Entity Name</label>
-              <input id="entity-name-input" type="text" placeholder="Hughes Delivery" />
-            </div>
-          </div>
-
-          <div class="row wrap">
-            <div class="field" style="min-width: 220px;">
-              <label>Unit Type</label>
-              <select id="unit-type-input">
-                <option value="P&D">P&amp;D</option>
-                <option value="Tractor">Tractor</option>
-                <option value="Trailer">Trailer</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div class="row" style="align-items:flex-end;">
-              <button id="add-vehicle-btn" class="btn primary">Add Vehicle</button>
-            </div>
-          </div>
-
-          <div id="vehicleMsg" class="msg hidden"></div>
-        </div>
-
-        <div class="panel-head qvi-table-head">
-          <h3>Vehicle Inspection Records</h3>
-          <div class="panel-actions" style="gap:10px; display:flex; align-items:center; flex-wrap:wrap;">
-            <button id="btnQviSaveAll" class="btn primary">Save All Changes</button>
-            <input id="qviSearchInput" type="search" placeholder="Search vehicle number, entity, unit type..." />
-          </div>
-        </div>
-
-        <div class="table-wrap qvi-table-wrap">
-          <table class="qvi-table">
-            <thead>
-              <tr>
-                <th>Entity Name</th>
-                <th>Unit Type</th>
-                <th>Vehicle Number</th>
-                <th>Quarter</th>
-                <th>Inspection Date</th>
-                <th>Inspected By</th>
-                <th>Out of Service</th>
-                <th>QVI Complete</th>
-                <th>SSTI Complete</th>
-                <th>Notes</th>
-                <th>Status / Actions</th>
-              </tr>
-            </thead>
-            <tbody id="qviTableBody"></tbody>
-          </table>
-        </div>
-
-        <div id="qviEmpty" class="empty hidden">No QVI records to show yet for this quarter.</div>
+        <div id="historyList" class="history-list"></div>
       </section>
-
-
-      <!-- MDVS -->
-      <section id="panel-mdvs" class="card panel hidden">
-        <div class="panel-head">
-          <div>
-            <h2>MDVS Dashboard</h2>
-            <div class="muted">Cleaner daily + weekly tracking built from your uploaded WAMT and Recent Info workbook.</div>
-          </div>
-          <div class="panel-actions">
-            <span class="pill">District Goal 0.06%</span>
-          </div>
-        </div>
-
-        <div class="mdvs-topbar">
-          <div class="mdvs-segment" id="mdvsViewTabs">
-            <button class="mdvs-seg-btn active" data-view="daily">Daily</button>
-            <button class="mdvs-seg-btn" data-view="weekly">Weekly</button>
-          </div>
-
-          <div class="mdvs-top-controls">
-            <div class="field">
-              <label>Report date</label>
-              <input id="mdvsDateInput" type="date" />
-            </div>
-            <div class="field">
-              <label>Week of (Sunday)</label>
-              <input id="mdvsWeekInput" type="date" />
-            </div>
-            <div class="field mdvs-search-field">
-              <label>Search raw rows</label>
-              <input id="mdvsSearchInput" type="search" placeholder="Search ISP, manager, tracking, work area..." />
-            </div>
-          </div>
-        </div>
-
-        <div id="mdvsMgmtWrap" class="card inner mdvs-upload-card hidden">
-          <h3>Upload MDVS workbook</h3>
-          <p class="muted">Upload a single .xlsx file that includes <b>WAMT</b> and <b>Recent Info</b>. Because the uploaded tabs do not include the denominator directly, enter the previous day total packages here and the site calculates the rest.</p>
-
-          <div class="grid2">
-            <div class="field">
-              <label>Previous day's total packages</label>
-              <input id="mdvsPrevTotalInput" type="number" min="0" step="1" placeholder="35305" />
-            </div>
-            <div class="field">
-              <label>Excel workbook (.xlsx)</label>
-              <input id="mdvsFileInput" type="file" accept=".xlsx,.xlsm,.xls" />
-            </div>
-          </div>
-
-          <div class="row">
-            <button id="btnMdvsUpload" class="btn primary">Process upload</button>
-            <button id="btnMdvsRefresh" class="btn">Refresh</button>
-          </div>
-
-          <div id="mdvsUploadMeta" class="muted"></div>
-        </div>
-
-        <div id="mdvsMsg" class="msg hidden"></div>
-
-        <div class="mdvs-stat-grid">
-          <div class="mdvs-stat-card">
-            <div class="mdvs-stat-label">Previous Day Packages</div>
-            <div id="mdvsStatPrevTotal" class="mdvs-stat-value">0</div>
-            <div class="mdvs-stat-sub">Manual denominator saved with each upload</div>
-          </div>
-          <div class="mdvs-stat-card">
-            <div class="mdvs-stat-label">MDVS Amount</div>
-            <div id="mdvsStatAmount" class="mdvs-stat-value">0</div>
-            <div class="mdvs-stat-sub">Packages with 4+ van scans</div>
-          </div>
-          <div class="mdvs-stat-card">
-            <div class="mdvs-stat-label">Total Percent</div>
-            <div id="mdvsStatPercent" class="mdvs-stat-value">0.0000%</div>
-            <div class="mdvs-stat-sub">MDVS Amount / Previous Day Packages</div>
-          </div>
-          <div class="mdvs-stat-card">
-            <div class="mdvs-stat-label">Packages to Goal</div>
-            <div id="mdvsStatGoalPkgs" class="mdvs-stat-value">0</div>
-            <div class="mdvs-stat-sub">Goal threshold at 0.06%</div>
-          </div>
-          <div class="mdvs-stat-card">
-            <div class="mdvs-stat-label">Over / Under</div>
-            <div id="mdvsStatOverUnder" class="mdvs-stat-value">Even</div>
-            <div id="mdvsStatOverUnderSub" class="mdvs-stat-sub">0.00 packages from goal</div>
-          </div>
-        </div>
-
-        <div class="mdvs-visual-grid">
-          <div class="mdvs-visual-card">
-            <h3>Goal Performance</h3>
-            <div class="mdvs-progress-block">
-              <div class="mdvs-progress-head">
-                <span>MDVS % vs district goal</span>
-                <strong id="mdvsProgressText">0.0000% / 0.0600%</strong>
-              </div>
-              <div class="progress-track"><div id="mdvsProgressBar" class="progress-fill" style="width:0%"></div></div>
-            </div>
-            <div id="mdvsGoalState" class="mdvs-goal-state">Awaiting data</div>
-          </div>
-
-          <div class="mdvs-visual-card">
-            <h3>Top Hitters</h3>
-            <div id="mdvsTopHitters" class="mdvs-top-hitters empty">No MDVS data loaded.</div>
-          </div>
-        </div>
-
-        <div id="mdvsDailyView">
-          <div class="grid2">
-            <div class="card inner">
-              <div class="panel-head">
-                <h3>P&amp;D Manager Leaderboard</h3>
-                <div class="panel-actions"><span class="pill">Daily</span></div>
-              </div>
-              <div id="mdvsManagerBoard" class="mdvs-board"></div>
-            </div>
-
-            <div class="card inner">
-              <div class="panel-head">
-                <h3>ISP Leaderboard</h3>
-                <div class="panel-actions"><span class="pill">Daily</span></div>
-              </div>
-              <div id="mdvsIspBoard" class="mdvs-board"></div>
-            </div>
-          </div>
-        </div>
-
-        <div id="mdvsWeeklyView" class="hidden">
-          <div class="card inner">
-            <div class="panel-head">
-              <h3>Weekly Trend</h3>
-              <div class="panel-actions"><span id="mdvsWeeklyLabel" class="pill">Week</span></div>
-            </div>
-            <div id="mdvsWeeklyTrend" class="mdvs-week-list"></div>
-          </div>
-
-          <div class="grid2" style="margin-top:14px;">
-            <div class="card inner">
-              <div class="panel-head">
-                <h3>Weekly Manager Leaderboard</h3>
-                <div class="panel-actions"><span class="pill">Week</span></div>
-              </div>
-              <div id="mdvsWeeklyManagerBoard" class="mdvs-board"></div>
-            </div>
-
-            <div class="card inner">
-              <div class="panel-head">
-                <h3>Weekly ISP Leaderboard</h3>
-                <div class="panel-actions"><span class="pill">Week</span></div>
-              </div>
-              <div id="mdvsWeeklyIspBoard" class="mdvs-board"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid2" style="margin-top:14px;">
-          <div class="card inner">
-            <div class="panel-head">
-              <h3>Raw MDVS Rows</h3>
-              <div class="panel-actions"><span class="pill">Daily</span></div>
-            </div>
-            <div class="table-wrap mdvs-raw-wrap">
-              <table class="mdvs-table">
-                <thead>
-                  <tr>
-                    <th>Tracking</th>
-                    <th>Van Scans</th>
-                    <th>ISP</th>
-                    <th>P&amp;D Manager</th>
-                    <th>Work Area</th>
-                    <th>Description</th>
-                    <th>Vehicle</th>
-                    <th>Scan Datetime</th>
-                  </tr>
-                </thead>
-                <tbody id="mdvsRawBody"></tbody>
-              </table>
-            </div>
-            <div id="mdvsRawEmpty" class="empty hidden">No MDVS raw rows for this day yet.</div>
-          </div>
-
-          <div class="card inner">
-            <div class="panel-head">
-              <h3>ISP → P&amp;D Manager Mapping</h3>
-              <div class="panel-actions"><span class="pill">Website-owned</span></div>
-            </div>
-
-            <div id="mdvsMappingMgmt" class="hidden">
-              <div class="field">
-                <label>ISP Name</label>
-                <input id="mdvsMapIspInput" type="text" placeholder="HUGHES DELIVERY SERVICE INC" />
-              </div>
-              <div class="field">
-                <label>P&amp;D Manager</label>
-                <input id="mdvsMapManagerInput" type="text" placeholder="Whitney Bridges" />
-              </div>
-              <div class="row">
-                <button id="btnMdvsMapSave" class="btn primary">Add / Update Mapping</button>
-                <button id="btnMdvsMapDelete" class="btn danger">Remove Mapping</button>
-              </div>
-            </div>
-
-            <div id="mdvsMapList" class="list compact"></div>
-            <div id="mdvsMapEmpty" class="empty hidden">No ISP mappings saved yet.</div>
-          </div>
-        </div>
-      </section>
-
-
-      <!-- ADMIN -->
-      <!-- SERVICE -->
-      <section id="panel-service" class="card panel hidden">
-        <div class="panel-head">
-          <h2>Service Dashboard</h2>
-          <div class="panel-actions">
-            <span class="pill">Power BI</span>
-          </div>
-        </div>
-
-        <div class="service-embed-wrap">
-          <iframe
-            class="service-embed"
-            role="presentation"
-            src="https://app.powerbi.com/rdlEmbed?reportId=0756d693-4795-4c3e-9dd1-751f07f68932&autoAuth=true&ctid=b945c813-dce6-41f8-8457-5a12c2fe15bf&ctid=b945c813-dce6-41f8-8457-5a12c2fe15bf&experience=power-bi"
-            frameborder="0"
-            allowfullscreen="true">
-          </iframe>
-        </div>
-      </section>
-
-      <section id="panel-admin" class="card panel hidden">
-        <div class="panel-head">
-          <h2>Management</h2>
-          <div class="panel-actions">
-            <span class="pill">Allow-list</span>
-          </div>
-        </div>
-
-        <div class="grid2">
-          <div class="card inner">
-            <h3>Allow an email</h3>
-            <p class="muted">Add an email to the allow-list and choose their role.</p>
-
-            <div class="field">
-              <label>Email</label>
-              <input id="allowEmail" type="email" placeholder="person@example.com" />
-            </div>
-
-            <div class="field">
-              <label>Role</label>
-              <select id="allowRole">
-                <option value="user">Regular user</option>
-                <option value="management">Management</option>
-              </select>
-            </div>
-
-            <div class="row">
-              <button id="btnAllowAdd" class="btn primary">Add / Update</button>
-              <button id="btnAllowRemove" class="btn danger">Remove</button>
-            </div>
-
-            <div id="adminMsg" class="msg hidden"></div>
-          </div>
-
-          <div class="card inner">
-            <h3>Allowed users</h3>
-            <div id="allowedList" class="list compact"></div>
-            <div id="allowedEmpty" class="empty hidden">No allowed users found.</div>
-          </div>
-        </div>
-      </section>
-    </section>
-
-    <!-- MODAL: NEW TASK -->
-    <div id="modalBackdrop" class="backdrop hidden"></div>
-    <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <div class="modal-head">
-        <h3 id="modalTitle">New task</h3>
-        <button id="btnModalClose" class="iconbtn" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="field">
-          <label>Title</label>
-          <input id="taskTitle" type="text" placeholder="Task title" maxlength="120" />
-        </div>
-        <div class="field">
-          <label>Description</label>
-          <textarea id="taskDesc" rows="4" placeholder="Details (optional)"></textarea>
-        </div>
-        <div class="field">
-          <label>Assign to</label>
-          <select id="taskAssignTo"></select>
-          <div class="muted">Optional. Pick who this task is for.</div>
-        </div>
-        <div class="row">
-          <button id="btnCreateTask" class="btn primary">Create</button>
-          <button id="btnCancelTask" class="btn">Cancel</button>
-        </div>
-        <div id="taskMsg" class="msg hidden"></div>
-      </div>
-    </div>
-  </main>
-
-  <footer class="footer">
-    <span class="muted">Tip: Management can add tasks and manage the allow-list. Regular users can complete tasks and comment.</span>
-  </footer>
-
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-  <!-- Firebase app logic -->
-  <script type="module" src="firebase-config.js?v=2"></script>
-  <script type="module" src="app.js?v=2"></script>
+    </main>
+  </div>
 </body>
 </html>
