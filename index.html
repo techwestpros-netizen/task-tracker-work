@@ -3,75 +3,118 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Barcode Scanner</title>
-  <link rel="stylesheet" href="styles.css" />
-  <script defer src="app.js"></script>
+  <title>FedEx Barcode Scanner</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #0f172a;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 20px;
+    }
+
+    video {
+      width: 100%;
+      max-width: 500px;
+      border-radius: 12px;
+      margin-top: 15px;
+      background: black;
+    }
+
+    .box {
+      border: 2px solid white;
+      width: 80%;
+      max-width: 400px;
+      height: 200px;
+      margin: 20px auto;
+      position: relative;
+    }
+
+    .line {
+      position: absolute;
+      width: 100%;
+      height: 3px;
+      background: lime;
+      animation: scan 2s infinite;
+    }
+
+    @keyframes scan {
+      0% { top: 0; }
+      50% { top: 95%; }
+      100% { top: 0; }
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      margin-top: 15px;
+      background: #7c3aed;
+      color: white;
+      cursor: pointer;
+    }
+
+    #result {
+      margin-top: 20px;
+      font-size: 22px;
+      font-weight: bold;
+      word-break: break-word;
+    }
+  </style>
 </head>
+
 <body>
-  <div class="app-shell">
-    <header class="hero">
-      <p class="eyebrow">Phone-first scanner</p>
-      <h1>Point at the package barcode. Let it scan live.</h1>
-      <p class="subtext">
-        Faster startup, cleaner loading, and better iPhone-friendly handling.
-      </p>
-    </header>
 
-    <main class="grid">
-      <section class="card">
-        <div class="card-header">
-          <h2>Live Scanner</h2>
-          <span id="cameraStatus" class="status-pill neutral">Camera off</span>
-        </div>
+  <h1>Live Barcode Scanner</h1>
 
-        <div class="camera-wrap">
-          <video id="video" playsinline autoplay muted></video>
-          <div class="scan-frame">
-            <div class="scan-line"></div>
-          </div>
-          <div id="cameraPlaceholder" class="camera-placeholder">
-            Tap Open Camera, then aim the barcode inside the box
-          </div>
-        </div>
+  <video id="video" autoplay playsinline></video>
 
-        <div class="button-row">
-          <button id="startCameraBtn" class="btn btn-primary">Open Camera</button>
-          <button id="switchCameraBtn" class="btn" disabled>Switch Camera</button>
-          <button id="stopCameraBtn" class="btn btn-danger" disabled>Stop</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <h2>Latest Result</h2>
-          <span id="scanStatus" class="status-pill neutral">Waiting</span>
-        </div>
-
-        <div class="result-stack">
-          <div class="result-box">
-            <div class="label">Scanned Value</div>
-            <div id="trackingNumber" class="tracking-number">—</div>
-          </div>
-
-          <label class="label" for="manualTrackingInput">Manual correction</label>
-          <input id="manualTrackingInput" class="manual-input" type="text" placeholder="Type tracking value if needed" />
-          <button id="applyManualBtn" class="btn">Use Manual Value</button>
-
-          <div class="button-row">
-            <button id="saveBtn" class="btn btn-primary" disabled>Save Scan</button>
-            <button id="clearLatestBtn" class="btn">Clear Latest</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="card history-card">
-        <div class="card-header">
-          <h2>Scan History</h2>
-          <button id="clearHistoryBtn" class="btn btn-danger btn-small">Clear History</button>
-        </div>
-        <div id="historyList" class="history-list"></div>
-      </section>
-    </main>
+  <div class="box">
+    <div class="line"></div>
   </div>
+
+  <button onclick="startScanner()">Open Camera</button>
+
+  <div id="result">Waiting for scan...</div>
+
+  <!-- ✅ WORKING ZXING LIBRARY -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest"></script>
+
+  <script>
+    let codeReader;
+
+    async function startScanner() {
+      const video = document.getElementById("video");
+
+      try {
+        codeReader = new ZXing.BrowserMultiFormatReader();
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }
+        });
+
+        video.srcObject = stream;
+
+        codeReader.decodeFromVideoElementContinuously(video, (result, err) => {
+          if (result) {
+            document.getElementById("result").innerText = result.text;
+
+            // 🔊 Optional beep
+            new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play();
+          }
+        });
+
+      } catch (err) {
+        alert("Camera failed: " + err);
+      }
+    }
+  </script>
+
 </body>
 </html>
